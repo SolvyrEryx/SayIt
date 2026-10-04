@@ -203,5 +203,8 @@ class SettingsWindow(QDialog):
         return self._home_tab
 
     def _reset_settings(self) -> None:
+        """Reset, persist, and immediately apply all settings."""
         self._settings.reset_to_defaults()
+        self._settings.save()
         self._load_settings()
+        self.settings_changed.emit()
