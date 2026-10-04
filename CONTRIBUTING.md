@@ -13,7 +13,7 @@ uv run pytest -m "not slow"
 uv run python -m sayit
 ```
 
-The validated runtime is **sherpa-onnx 1.12.21 + sherpa-onnx-core 1.12.23**
+The validated runtime is **sherpa-onnx 1.13.8 + sherpa-onnx-core 1.13.8**
 (pinned together in `uv.lock`). Please do **not** upgrade these without ASR
 re-validation.
 
