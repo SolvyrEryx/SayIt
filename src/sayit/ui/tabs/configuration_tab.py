@@ -346,6 +346,7 @@ class ConfigurationTab(QWidget):
             rb = QRadioButton(f"{m.label} \u2014 {m.tagline}")
             rb.setAccessibleName(f"Speech mode {m.label}")
             rb.setProperty("mode", m.mode)
+            rb.toggled.connect(self._on_mode_radio_toggled)
             self._mode_group.addButton(rb)
             self._mode_radios[m.mode] = rb
             row_l.addWidget(rb)
@@ -661,6 +662,61 @@ class ConfigurationTab(QWidget):
 
     def _on_model_combo_changed(self, index: int) -> None:
         self._update_button_states()
+        if not self._syncing_model_selection and hasattr(self, "_SM"):
+            self._sync_mode_radios_from_model(self._get_selected_model_name())
+
+    def _on_mode_radio_toggled(self, checked: bool) -> None:
+        """Mirror a product speech mode into the concrete ASR model selection."""
+        if not checked or self._syncing_model_selection or not hasattr(self, "_model_combo"):
+            return
+
+        sender = self.sender()
+        mode = sender.property("mode") if sender is not None else None
+        if not mode:
+            return
+
+        if not self._SM.is_mode_available(mode):
+            self._syncing_model_selection = True
+            try:
+                self._sync_mode_radios_from_model(self._model_combo.currentData())
+            finally:
+                self._syncing_model_selection = False
+            QMessageBox.warning(
+                self,
+                "Model not installed",
+                f"{self._SM.get_mode(mode).label} is not installed yet. "
+                "Download it first, then select it.",
+            )
+            return
+
+        self._syncing_model_selection = True
+        try:
+            self._load_model_selection(self._SM.model_id_for_mode(mode))
+        finally:
+            self._syncing_model_selection = False
+
+    def _sync_mode_radios_from_model(self, model_id: Optional[str]) -> None:
+        """Reflect the concrete combo model without ever overwriting it."""
+        if not hasattr(self, "_mode_radios"):
+            return
+
+        mode = None
+        if self._SM.is_known_mode_model(model_id):
+            mode = self._SM.mode_for_model_id(model_id)
+
+        self._syncing_model_selection = True
+        try:
+            self._mode_group.setExclusive(mode is not None)
+            if mode is None:
+                self._mode_group.setExclusive(False)
+                for rb in self._mode_radios.values():
+                    rb.setChecked(False)
+                self._mode_group.setExclusive(True)
+            else:
+                for candidate, rb in self._mode_radios.items():
+                    rb.setChecked(candidate == mode)
+        finally:
+            self._syncing_model_selection = False
 
     def _on_download_clicked(self) -> None:
         model_id = self._model_combo.currentData()
@@ -785,12 +841,9 @@ class ConfigurationTab(QWidget):
         for name, cb in getattr(self, "_domain_checks", {}).items():
             cb.setChecked(name in enabled)
 
-        # Speech mode: reflect the persisted model_id (Fast vs Higher Accuracy).
+        # Speech Mode mirrors the persisted concrete model; it never writes it.
         if hasattr(self, "_mode_radios"):
-            cur_mode = self._SM.mode_for_model_id(self._settings.model_id)
-            rb = self._mode_radios.get(cur_mode)
-            if rb is not None:
-                rb.setChecked(True)
+            self._sync_mode_radios_from_model(self._settings.model_id)
             self._refresh_mode_status()
 
         # Advanced / Performance: Whisper Small CPU threads (bounded {4,6,8}).
@@ -872,26 +925,10 @@ class ConfigurationTab(QWidget):
         self._settings.sample_rate = self._sample_rate_combo.currentData()
         self._settings.input_device = self._device_combo.currentData()
 
+        # The ASR Model combo is the single persistent source of truth.
+        # Speech Mode radios only mirror/select that combo.
         if model_name:
             self._settings.model_id = model_name
-
-        # Speech mode selection maps to model_id (takes precedence over the raw
-        # model combo). Never silently switch to an uninstalled optional model.
-        if hasattr(self, "_mode_group"):
-            checked = self._mode_group.checkedButton()
-            if checked is not None:
-                mode = checked.property("mode")
-                target = self._SM.model_id_for_mode(mode)
-                if self._SM.is_mode_available(mode):
-                    self._settings.model_id = target
-                elif target != self._settings.model_id:
-                    # Optional model not installed: keep the current model and
-                    # tell the user (do NOT select an unavailable model).
-                    QMessageBox.warning(
-                        self, "Model not installed",
-                        f"{self._SM.get_mode(mode).label} ({self._SM.get_mode(mode).tagline}) "
-                        "is not installed yet. Download it first; keeping the current model.")
-                    self._refresh_mode_status()
 
         # Advanced / Performance: persist the selected Whisper Small thread
         # count (Whisper-only; does not affect Parakeet). Validator/loader
