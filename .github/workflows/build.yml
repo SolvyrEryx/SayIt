@@ -2,6 +2,7 @@ name: Build Desktop App
 
 on:
   push:
+    branches: [main]
     tags:
       - "v*"          # Release build runs on a version tag; builds the TAGGED commit.
   release:
@@ -14,7 +15,9 @@ env:
   # The leading "v" is stripped in the steps that need a bare version
   # (Briefcase build + AppImage filename) so the Linux asset is named
   # SayIt-0.1.0-Linux-x86_64.AppImage.
-  APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v0.1.0' }}
+  # For tag pushes, use that tag. For the one-time release commit on main,
+  # this is the new patch release being prepared.
+  APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v0.1.1' }}
 
 jobs:
   # ============================================================================
@@ -225,6 +228,7 @@ jobs:
   # ============================================================================
   release:
     name: Create Release
+    if: ${{ github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')) }}
     needs: [build-windows, build-linux-x64]
     runs-on: ubuntu-latest
     # No 'if' needed - this workflow only runs on release creation
@@ -276,9 +280,13 @@ jobs:
         cat release-files/checksums.txt
 
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
-        tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+        tag_name: ${{ github.event.release.tag_name || env.APP_VERSION }}
+        target_commitish: ${{ github.sha }}
         generate_release_notes: true
         files: release-files/*
-        draft: true  # Create as draft so you can review before publishing
+        fail_on_unmatched_files: true
+        overwrite_files: true
+        draft: false
+        make_latest: true
