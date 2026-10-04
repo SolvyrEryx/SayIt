@@ -40,7 +40,6 @@ class TestBackendAbstraction:
         assert caps.experimental is False
 
     def test_cpu_backend_wraps_engine_byte_identical(self):
-        # The backend must delegate to the engine's transcribe_chunked verbatim.
         class FakeEngine:
             is_ready = True
             last_chunk_count = 1
@@ -71,7 +70,10 @@ class TestBackendAbstraction:
 
 
 class TestBackendManager:
-    def test_only_cpu_is_selectable(self):
+    def test_only_cpu_is_selectable(self, monkeypatch):
+        # Availability is a model-cache/runtime concern. This unit test is about
+        # backend registration, so isolate it from the runner's empty model cache.
+        monkeypatch.setattr(ParakeetCPUBackend, "is_available", lambda self: True)
         m = BackendManager(AccelerationMode.AUTO)
         assert m.available_backends() == ["parakeet-cpu"]
 
@@ -82,7 +84,6 @@ class TestBackendManager:
         assert b.capabilities().validation is ValidationLevel.VALIDATED
 
     def test_gpu_mode_falls_back_to_cpu_today(self):
-        # GPU requested but no validated GPU backend exists -> safe CPU.
         m = BackendManager(AccelerationMode.GPU)
         b = m.select()
         assert b.capabilities().device_kind == "cpu"
@@ -98,7 +99,6 @@ class TestBackendManager:
         m.register(UnavailableBackend(
             "parakeet-directml", "Parakeet DirectML", "directml",
             ("NVIDIA", "AMD", "Intel"), ValidationLevel.SUPPORTED, "experimental"))
-        # Guarded: only VALIDATED + available backends become selectable.
         assert set(m.available_backends()) == before
 
 
@@ -111,8 +111,6 @@ class TestHonestDiagnostics:
 
     def test_active_asr_never_claims_acceleration_without_validated_accel(self):
         d = BackendManager(AccelerationMode.AUTO).diagnostics()
-        # Even if a GPU is physically present, the ACTIVE backend is CPU, so the
-        # status must be "CPU", not "Accelerated".
         assert d["active_asr"]["accelerated"] is False
         assert d["active_asr"]["status"] == "CPU"
 
@@ -126,15 +124,12 @@ class TestHonestDiagnostics:
 
 class TestCapabilityDetection:
     def test_detection_is_readonly_and_never_raises(self):
-        cap = detect_capabilities()  # must not raise
+        cap = detect_capabilities()
         assert cap.os_name
-        # cpu_logical should be a positive int on any real machine.
         assert cap.cpu_logical is None or cap.cpu_logical >= 1
 
     def test_detection_separates_driver_from_runtime(self):
         cap = detect_capabilities()
-        # These are independent booleans; a machine can have the driver but not
-        # the toolkit runtime. Just assert they are booleans (honest flags).
         assert isinstance(cap.cuda_driver_present, bool)
         assert isinstance(cap.cuda_runtime_present, bool)
         assert isinstance(cap.directml_present, bool)
@@ -171,7 +166,7 @@ class TestTimingExtensions:
 
     def test_aggregator_percentiles(self):
         agg = TimingAggregator()
-        for ms in range(1, 11):  # 10 runs, paste 1..10 ms
+        for ms in range(1, 11):
             t = PipelineTiming(job_id=ms)
             t.mark("paste_start", 0.0)
             t.mark("paste_end", ms / 1000.0)
@@ -185,13 +180,10 @@ class TestTimingExtensions:
 
 class TestPasteOptimization:
     def test_pre_paste_settle_constant_small(self):
-        # The removed 100 ms post-paste hold must stay gone; the pre-paste
-        # settle must be a small, bounded value (reliability without latency).
         assert TextOutputController.PRE_PASTE_SETTLE_S <= 0.05
         assert TextOutputController.PRE_PASTE_SETTLE_S >= 0.0
 
     def test_output_text_copies_and_issues_paste(self, monkeypatch):
-        # No post-paste sleep remains; output still copies + issues paste.
         import sayit.core.output.text_output as to
 
         copied = {}
