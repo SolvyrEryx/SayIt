@@ -6,7 +6,8 @@ from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import QKeySequenceEdit
 
 from src.sayit.core.asr import transcriber as transcriber_module
-from src.sayit.core.settings import HotkeyConfig
+from src.sayit.core.input import hotkey as hotkey_module
+from src.sayit.core.settings import HotkeyConfig, Settings
 from src.sayit.ui.tabs.configuration_tab import ConfigurationTab
 
 
@@ -34,6 +35,78 @@ def test_configuration_hotkey_falls_back_when_qt_returns_no_modifier(qtbot):
     result = tab._parse_key_sequence()
 
     assert result == HotkeyConfig()
+
+
+
+def test_hotkey_listener_re_registers_new_config_without_stale_listener():
+    class FakeImpl:
+        def __init__(self):
+            self.is_running = True
+            self.calls = []
+            self._pressed_keys = {"stale"}
+
+        def stop(self):
+            self.calls.append("stop")
+            self.is_running = False
+            self._pressed_keys.clear()
+
+        def update_config(self, trigger_key, modifiers):
+            self.calls.append(("update", trigger_key, modifiers))
+
+        def start(self):
+            self.calls.append("start")
+            self.is_running = True
+
+    listener = hotkey_module.HotkeyListener.__new__(hotkey_module.HotkeyListener)
+    listener._is_hotkey_active = False
+    listener._impl = FakeImpl()
+    listener._trigger_key = "space"
+    listener._required_modifier_types = {"ctrl"}
+
+    new_settings = Settings(
+        hotkey=HotkeyConfig(modifiers=["alt", "shift"], key="r")
+    )
+    listener.update_settings(new_settings)
+
+    assert listener._trigger_key == "r"
+    assert listener._required_modifier_types == {"alt", "shift"}
+    assert listener._impl._pressed_keys == set()
+    assert listener._impl.calls == [
+        "stop",
+        ("update", "r", {"alt", "shift"}),
+        "start",
+    ]
+
+
+def test_hotkey_listener_uses_persisted_config_on_startup(monkeypatch):
+    persisted = Settings(
+        hotkey=HotkeyConfig(modifiers=["alt"], key="r")
+    )
+    monkeypatch.setattr(hotkey_module, "get_settings", lambda: persisted)
+
+    class FakeImpl:
+        def __init__(self, listener):
+            self.listener = listener
+
+        @property
+        def is_running(self):
+            return False
+
+        def update_config(self, *args):
+            pass
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(hotkey_module, "_PynputHotkeyListenerImpl", FakeImpl)
+
+    listener = hotkey_module.HotkeyListener()
+
+    assert listener._required_modifier_types == {"alt"}
+    assert listener._trigger_key == "r"
 
 
 def test_engine_downloads_missing_registry_model(monkeypatch):
