@@ -337,7 +337,7 @@ class Settings(BaseModel):
     def reset_to_defaults(self) -> None:
         """Reset settings while preserving typed nested models."""
         default = Settings()
-        for key in default.model_fields:
+        for key in Settings.model_fields:
             setattr(self, key, deepcopy(getattr(default, key)))
 
     def get_active_enhancement(self) -> Optional["Enhancement"]:
