@@ -152,12 +152,14 @@ Measured on one development machine under a warm steady-state benchmark — a
 | Metric | p50 | p95 |
 |---|---:|---:|
 | ASR (Parakeet int8, warm) | ≈ 739 ms | ≈ 1795 ms |
-| Stop → text (ASR + intelligence + insertion, minus GUI) | ≈ 836 ms | ≈ 2049 ms |
+| Stop → text (ASR + intelligence, excluding insertion and GUI) | ≈ 836 ms | ≈ 2049 ms |
 
 - **Environment:** AMD Ryzen 5 4600G (6c/12t), Windows, CPU inference,
   Parakeet TDT 0.6B v2 INT8, warm (model already loaded).
-- **Methodology:** 60 warm runs over fixed benchmark clips; cold model
-  initialization (~a few seconds) is excluded from dictation latency.
+- **Methodology:** 60 warm runs over fixed benchmark clips. The stop → text
+  figure covers ASR plus the on-device intelligence/correction stage; cold model
+  initialization (~a few seconds) and the clipboard/paste insertion + GUI
+  rendering are measured separately and excluded here.
 
 No "fastest", "best", or "zero-latency" claims are made. Your results will
 differ by CPU and utterance length.
@@ -178,16 +180,22 @@ has been measured.
 
 ### Normal users
 
-Download the latest release:
+Once a `v0.1.0` release is published, download it from the
+[Releases page](https://github.com/VptrCipher/SayIt/releases/latest). The
+release artifacts are built by CI and named:
 
-- **Windows:** `SayIt-0.1.0-windows-x64.exe` (Inno Setup installer) —
-  [Releases](https://github.com/VptrCipher/SayIt/releases/latest). Unsigned; see
+- **Windows:** `SayIt-Setup-x64.exe` (Inno Setup installer). Unsigned; see
   [Release status](#release-status) for the expected SmartScreen notice.
-- **Linux:** `SayIt-0.1.0-linux-x64.AppImage` —
-  [Releases](https://github.com/VptrCipher/SayIt/releases/latest). Mark it
-  executable (`chmod +x`) and run.
+- **Linux:** `SayIt-0.1.0-Linux-x86_64.AppImage`. Mark it executable
+  (`chmod +x`) and run.
 
-Verify your download against `SHA256SUMS.txt` on the release page.
+Verify your download against the published checksums (`checksums.txt` and the
+per-file `.sha256`) on the release page.
+
+> **Release-candidate note:** these artifacts are produced by CI when a version
+> tag is pushed. Until the `v0.1.0` release is published they will not yet be
+> attached to the Releases page — build [from source](#from-source) in the
+> meantime.
 
 Normal users do **not** need Python, a compiler, CUDA, or any SDK.
 

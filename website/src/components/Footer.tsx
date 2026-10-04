@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Container } from "./Container";
+import { FooterEqualizer } from "./FooterEqualizer";
 import { SayItLogo } from "./SayItLogo";
 import { site } from "@/lib/site";
 
@@ -61,14 +62,8 @@ export function Footer() {
             </ul>
           </nav>
         </div>
-        <div className="border-t border-line py-6 text-xs leading-relaxed text-muted">
-          <p>
-            SayIt is released under the MIT License. Optional LLM enhancement is a separate,
-            off-by-default feature; core dictation runs locally on your device.
-          </p>
-          <p className="mt-1">
-            SayIt is the product name, package, and application identity.
-          </p>
+        <div className="border-t border-line pt-6">
+          <FooterEqualizer />
         </div>
       </Container>
     </footer>

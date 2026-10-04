@@ -19,7 +19,12 @@ function* htmlFiles(dir: string): Generator<string> {
   }
 }
 
-const EXTERNAL_HOST_ALLOWLIST = new Set(["github.com"]);
+// Off-origin hosts that are legitimately allowed in the exported HTML:
+// - github.com: repository, issues, and release/download links.
+// - vptrcipher.github.io: the site's own canonical origin (canonical URL,
+//   Open Graph, sitemap) when NEXT_PUBLIC_SITE_ORIGIN is set for the GitHub
+//   Pages deploy. No third-party/tracking hosts are permitted.
+const EXTERNAL_HOST_ALLOWLIST = new Set(["github.com", "vptrcipher.github.io"]);
 
 describe("build output security & privacy scan", () => {
   const outExists = existsSync(OUT);

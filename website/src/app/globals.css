@@ -365,6 +365,21 @@
     50% { opacity: 0; }
   }
 
+  /* Footer equalizer: spectrum bars breathe like a live waveform. Negative
+     delays desynchronize the start so the strip never pulses in unison. */
+  .footer-eq-bar {
+    transform-box: fill-box;
+    transform-origin: bottom;
+    transform: scaleY(1);
+    animation: footer-eq 1.8s ease-in-out infinite alternate;
+    animation-delay: calc(var(--i, 0) * -0.11s);
+  }
+
+  @keyframes footer-eq {
+    from { transform: scaleY(0.4); }
+    to { transform: scaleY(1); }
+  }
+
   /* ========================================================================
      Premium landing layer — aurora glows, hero visualizer, marquee, panel
      and disclosure transitions, card glow. Every animated element's BASE
