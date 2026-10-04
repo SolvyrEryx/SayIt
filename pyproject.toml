@@ -12,7 +12,7 @@ dependencies = [
     "PySide6-Essentials>=6.6.0",
     "sounddevice>=0.5.3",
     "numpy>=1.26.0",
-    "sherpa-onnx>=1.12.21",
+    "sherpa-onnx==1.12.21",
     "litellm>=1.80.16",
     "pyperclip>=1.9.0",
     "sherpa-onnx-core==1.12.21",
@@ -79,15 +79,9 @@ requires = [
     "PySide6-Essentials>=6.6.0",
     "sounddevice>=0.5.3",
     "numpy>=1.26.0",
-    "sherpa-onnx>=1.12.21",
-    # sherpa-onnx-core provides the native ONNX Runtime + sherpa-onnx shared
-    # libraries that sherpa-onnx loads at runtime. It is a transitive dependency
-    # of sherpa-onnx (which pins ==1.12.21), but the top-level project pins
-    # >=1.12.23 deliberately (the validated core). It MUST be listed here with
-    # the SAME pin so the Briefcase-packaged app bundles the same validated core
-    # as the dev environment instead of silently resolving to the older
-    # transitive 1.12.21 (version drift). Not loosening any version.
-    "sherpa-onnx-core>=1.12.23",
+    "sherpa-onnx==1.12.21",
+    # Keep the native ASR runtime on the exact validated pair.
+    "sherpa-onnx-core==1.12.21",
     "litellm>=1.80.16",
     "pyperclip>=1.9.0",
 ]
