@@ -28,7 +28,7 @@ def test_configuration_hotkey_falls_back_when_qt_returns_no_modifier(qtbot):
     qtbot.addWidget(edit)
     edit.setKeySequence(QKeySequence("F9"))
 
-    tab = object.__new__(ConfigurationTab)
+    tab = ConfigurationTab.__new__(ConfigurationTab)
     tab._hotkey_edit = edit
 
     result = tab._parse_key_sequence()
