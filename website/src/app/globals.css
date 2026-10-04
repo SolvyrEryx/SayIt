@@ -1,0 +1,578 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   SayIt website — design tokens (single light theme; beige since 2026-10-03)
+
+   Warm beige surfaces with charcoal-brown ink and the brand's quiet teal
+   accent (#3B9C8C). A calm red is reserved exclusively for the
+   active-recording state. Soft 8–10px radii, restrained borders. The site
+   ships one theme by product decision and does not follow the OS scheme.
+
+   Components must consume these semantic tokens — not raw hex values.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces — warm beige base (product decision, 2026-10-03): cream page,
+     near-white warm cards, deeper beige bands. The teal accent stays: cool
+     teal on warm beige is the pairing the brand is built on. */
+  --bg-page: #f5f1e8;
+  --bg-surface: #fffdf7;
+  --bg-subtle: #ece5d6;
+
+  /* Text — warm charcoal/brown ink, tuned for AA on the beige surfaces. */
+  --text-strong: #292420;
+  --text-body: #4a4237;
+  --text-muted: #6b6254;
+
+  /* Lines */
+  --border-subtle: #e4dcc9;
+  --border-strong: #cfc4ab;
+
+  /* Brand */
+  --accent: #3b9c8c;
+  /* Hover lightens rather than darkens: ink text on the fill must keep AA
+     (4.5:1) in the hover state too, and darkening the teal breaks it. */
+  --accent-hover: #43a695;
+  --accent-soft: #e2f0ed;
+  /* Accent as TEXT color: darker than the fill accent so it holds WCAG AA
+     (4.5:1) on the beige page/surface backgrounds. */
+  --accent-text: #2a7364;
+  /* Text placed on filled accent surfaces. Warm near-black on teal keeps
+     WCAG AA contrast (white on mid-teal fails at normal text sizes). */
+  --on-accent: #221f19;
+  --record: #d9534f;
+  --record-soft: #f9ece7;
+
+  /* Focus — deepened past the fill accent so the ring holds 3:1 (WCAG
+     non-text) on the beige page, where mid-teal falls just short. */
+  --focus-ring: #2a7364;
+
+  /* Motion — short, purposeful, GPU-friendly. */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 280ms;
+  --motion-ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px rgb(15 23 20 / 0.04), 0 10px 28px -18px rgb(15 23 20 / 0.18);
+  --shadow-lift: 0 2px 4px rgb(15 23 20 / 0.05), 0 18px 36px -18px rgb(15 23 20 / 0.26);
+
+  /* Decorative (landing layer) — derived, never used for text. */
+  --shadow-glow: 0 12px 32px -12px rgb(59 156 140 / 0.4);
+  --dot-color: rgb(43 38 32 / 0.06);
+}
+
+/* The site ships ONE light theme by product decision (2026-10-03): it no
+   longer follows the OS prefers-color-scheme, so visitors on dark-mode
+   systems see the same light design instead of a different site. */
+
+/* Semantic token → Tailwind utility mapping (bg-page, text-strong, …). */
+@theme inline {
+  --color-page: var(--bg-page);
+  --color-surface: var(--bg-surface);
+  --color-subtle: var(--bg-subtle);
+  --color-strong: var(--text-strong);
+  --color-body: var(--text-body);
+  --color-muted: var(--text-muted);
+  --color-line: var(--border-subtle);
+  --color-line-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
+  --color-on-accent: var(--on-accent);
+  --color-record: var(--record);
+  --color-record-soft: var(--record-soft);
+
+  --ease-soft: var(--motion-ease-soft);
+  --ease-spring: var(--motion-ease-spring);
+
+  /* Radii follow the desktop stylesheet (8px controls, 10px groups). */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+}
+
+@theme {
+  /* Space Grotesk (display) + Inter (body), self-hosted via next/font —
+     the variables are attached to <html> in the root layout. */
+  --font-sans: var(--font-inter), system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-grotesk), var(--font-inter), system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, "SFMono-Regular", Menlo, monospace;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-page font-sans text-body antialiased;
+    text-underline-offset: 3px;
+    /* Whisper-quiet dot texture; the ambient glow lives in the fixed PageGlow
+       layer (layout.tsx) so it stays with the viewport on every scroll depth.
+       Sections and cards sit above both, opaque. */
+    background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
+    background-size: 26px 26px;
+  }
+
+  /* One display voice for every heading on the site. */
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background-color: var(--accent-soft);
+    color: var(--text-strong);
+  }
+
+  /* One consistent, visible focus treatment for the whole site. */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* On-load entrance: fade + small rise. Pure CSS, no JavaScript. Applied
+     above the fold only; scroll-triggered reveal is a later stage. */
+  @keyframes reveal-rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .reveal {
+    opacity: 0;
+    animation: reveal-rise var(--motion-slow) var(--motion-ease-soft) forwards;
+    animation-delay: var(--reveal-delay, 0ms);
+  }
+
+  /* Stagger direct children; per-item delay follows document order. */
+  .reveal-stagger > * {
+    opacity: 0;
+    animation: reveal-rise var(--motion-slow) var(--motion-ease-soft) forwards;
+  }
+
+  .reveal-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .reveal-stagger > *:nth-child(2) { animation-delay: 60ms; }
+  .reveal-stagger > *:nth-child(3) { animation-delay: 120ms; }
+  .reveal-stagger > *:nth-child(4) { animation-delay: 180ms; }
+  .reveal-stagger > *:nth-child(5) { animation-delay: 240ms; }
+  .reveal-stagger > *:nth-child(6) { animation-delay: 300ms; }
+  .reveal-stagger > *:nth-child(7) { animation-delay: 360ms; }
+  .reveal-stagger > *:nth-child(8) { animation-delay: 420ms; }
+
+  .reveal-stagger > *:nth-child(n + 9) {
+    opacity: 1;
+    animation: none;
+  }
+
+  /* Scroll-triggered reveal for below-the-fold sections. The hidden state is
+     gated on [data-js] (set by the Reveal component at mount), so content is
+     visible without JavaScript and in the pre-hydration paint. */
+  .scroll-reveal[data-js="true"] {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+      opacity var(--motion-slow) var(--motion-ease-soft),
+      transform var(--motion-slow) var(--motion-ease-soft);
+  }
+
+  .scroll-reveal[data-js="true"][data-visible="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  .scroll-reveal-stagger[data-js="true"] > * {
+    opacity: 0;
+    transform: translateY(14px);
+    transition:
+      opacity var(--motion-slow) var(--motion-ease-soft),
+      transform var(--motion-slow) var(--motion-ease-soft);
+  }
+
+  .scroll-reveal-stagger[data-js="true"][data-visible="true"] > * {
+    opacity: 1;
+    transform: none;
+  }
+
+  .scroll-reveal-stagger[data-js="true"][data-visible="true"] > *:nth-child(2) { transition-delay: 60ms; }
+  .scroll-reveal-stagger[data-js="true"][data-visible="true"] > *:nth-child(3) { transition-delay: 120ms; }
+  .scroll-reveal-stagger[data-js="true"][data-visible="true"] > *:nth-child(4) { transition-delay: 180ms; }
+  .scroll-reveal-stagger[data-js="true"][data-visible="true"] > *:nth-child(5) { transition-delay: 240ms; }
+  .scroll-reveal-stagger[data-js="true"][data-visible="true"] > *:nth-child(6) { transition-delay: 300ms; }
+  .scroll-reveal-stagger[data-js="true"][data-visible="true"] > *:nth-child(7) { transition-delay: 360ms; }
+  .scroll-reveal-stagger[data-js="true"][data-visible="true"] > *:nth-child(8) { transition-delay: 420ms; }
+
+  /* ========================================================================
+     Landing demos — hero dictation loop and the speak-vs-type comparison.
+     Pure CSS: no JavaScript drives any phase. Every animated element's
+     BASE style equals its final readable state, so when motion is reduced
+     (the global rule collapses all animations) or CSS is missing entirely,
+     the completed demo is what renders.
+     ======================================================================== */
+
+  /* Voice waveform bars. Height comes from --wave-h; the pulse animates
+     scale so layout never shifts. Stagger follows --i. */
+  .wave-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+  }
+
+  .wave-bar {
+    width: 3px;
+    border-radius: 9999px;
+    background: currentColor;
+    height: var(--wave-h, 16px);
+    transform-origin: bottom;
+    animation: wave-pulse 900ms var(--motion-ease-soft) infinite alternate;
+    animation-delay: calc(var(--i, 0) * 110ms);
+  }
+
+  @keyframes wave-pulse {
+    from { transform: scaleY(0.35); }
+    to { transform: scaleY(1); }
+  }
+
+  /* --- Hero dictation demo: three phases on one 14s loop -----------------
+     record → transcribe → result → (crossfade back to record). Phases stack
+     in one grid cell (height follows the tallest), and base opacity is 0 for
+     the transient phases and 1 for the result, so the reduced-motion still
+     frame is the finished transcript. */
+  .demo-stage {
+    --demo-loop: 14s;
+    display: grid;
+  }
+
+  .demo-phase {
+    grid-area: 1 / 1;
+    min-width: 0;
+  }
+
+  .demo-phase-record,
+  .demo-phase-transcribe {
+    opacity: 0;
+  }
+
+  .demo-phase-record {
+    animation: demo-record var(--demo-loop) linear infinite;
+  }
+
+  .demo-phase-transcribe {
+    animation: demo-transcribe var(--demo-loop) linear infinite;
+  }
+
+  .demo-phase-result {
+    animation: demo-result var(--demo-loop) linear infinite;
+  }
+
+  @keyframes demo-record {
+    0% { opacity: 1; }
+    36% { opacity: 1; }
+    42% { opacity: 0; }
+    95% { opacity: 0; }
+    100% { opacity: 1; }
+  }
+
+  @keyframes demo-transcribe {
+    0%, 36% { opacity: 0; }
+    42% { opacity: 1; }
+    58% { opacity: 1; }
+    64% { opacity: 0; }
+    100% { opacity: 0; }
+  }
+
+  @keyframes demo-result {
+    0%, 58% { opacity: 0; }
+    64% { opacity: 1; }
+    95% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* The recording dot breathes; the calm red stays exclusive to this state. */
+  .rec-dot {
+    animation: rec-pulse 1.1s ease-in-out infinite;
+  }
+
+  @keyframes rec-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  /* Indeterminate progress used by the transcribe phase. */
+  .demo-progress-bar {
+    animation: demo-progress 1.2s ease-in-out infinite;
+  }
+
+  @keyframes demo-progress {
+    0% { transform: translateX(-110%); }
+    100% { transform: translateX(330%); }
+  }
+
+  /* --- Speak-vs-type comparison ------------------------------------------
+     The typed line fills at typing pace over one shared loop; the spoken
+     line lands almost immediately. steps() needs the exact character count,
+     supplied as --type-chars by the component. */
+  .type-line {
+    width: calc(var(--type-chars) * 1ch);
+    overflow: hidden;
+    white-space: nowrap;
+    border-right: 2px solid var(--border-strong);
+    animation: type-loop var(--compare-loop, 12s) steps(var(--type-chars), end) infinite;
+  }
+
+  @keyframes type-loop {
+    0% { width: 0; opacity: 1; }
+    6% { width: 0; opacity: 1; }
+    72% { width: calc(var(--type-chars) * 1ch); opacity: 1; }
+    94% { width: calc(var(--type-chars) * 1ch); opacity: 1; }
+    98%, 100% { width: calc(var(--type-chars) * 1ch); opacity: 0; }
+  }
+
+  .voice-line {
+    opacity: 1;
+    animation: voice-appear var(--compare-loop, 12s) linear infinite;
+  }
+
+  @keyframes voice-appear {
+    0% { opacity: 0; }
+    8% { opacity: 0; }
+    18% { opacity: 1; }
+    94% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  .caret-blink {
+    animation: caret-blink 1.1s step-end infinite;
+  }
+
+  @keyframes caret-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  /* ========================================================================
+     Premium landing layer — aurora glows, hero visualizer, marquee, panel
+     and disclosure transitions, card glow. Every animated element's BASE
+     style equals its final state, so the global reduced-motion collapse
+     (and CSS-less rendering) lands on a clean, complete still frame.
+     ======================================================================== */
+
+  /* Slow-drifting aurora blobs behind the hero and CTA. */
+  .aurora-blob {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(64px);
+    pointer-events: none;
+    animation: aurora-drift 16s var(--motion-ease-soft) infinite alternate;
+  }
+
+  @keyframes aurora-drift {
+    from { transform: translate3d(-2%, -1%, 0) scale(1); }
+    to { transform: translate3d(3%, 3%, 0) scale(1.1); }
+  }
+
+  /* Large, faint waveform visualizer behind the hero — the voice signature. */
+  .hero-wave {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .hero-wave span {
+    width: 3px;
+    border-radius: 9999px;
+    background: currentColor;
+    opacity: 0.14;
+    height: var(--h, 40px);
+    transform-origin: bottom;
+    animation: hero-wave 3.4s var(--motion-ease-soft) infinite alternate;
+    animation-delay: calc(var(--i, 0) * 95ms);
+  }
+
+  @media (min-width: 640px) {
+    .hero-wave {
+      gap: 6px;
+    }
+
+    .hero-wave span {
+      width: 4px;
+    }
+  }
+
+  @keyframes hero-wave {
+    from { transform: scaleY(0.5); }
+    to { transform: scaleY(1); }
+  }
+
+  /* Scroll-linked parallax where the browser supports scroll-driven
+     animations (progressive enhancement — static elsewhere). The wrapper
+     parallaxes while the inner element keeps its own drift animation. */
+  @supports (animation-timeline: scroll()) {
+    .parallax-lift {
+      animation: parallax-lift linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0vh 120vh;
+    }
+
+    @keyframes parallax-lift {
+      to { transform: translate3d(0, -90px, 0); }
+    }
+
+    .parallax-drop {
+      animation: parallax-drop linear both;
+      animation-timeline: scroll(root block);
+      animation-range: 0vh 120vh;
+    }
+
+    @keyframes parallax-drop {
+      to { transform: translate3d(0, 70px, 0); }
+    }
+  }
+
+  /* Seamless marquee ribbon: the track holds two identical copies and
+     translates exactly one copy width (-50%). */
+  .marquee {
+    overflow: hidden;
+    mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 14%, #000 86%, transparent);
+  }
+
+  .marquee-track {
+    display: flex;
+    width: max-content;
+    animation: marquee 32s linear infinite;
+  }
+
+  .marquee:hover .marquee-track {
+    animation-play-state: paused;
+  }
+
+  @keyframes marquee {
+    to { transform: translateX(-50%); }
+  }
+
+  /* Tab-panel entrance: the class is added only while a panel is selected,
+     so every switch replays the rise. */
+  .panel-in {
+    animation: panel-in 260ms var(--motion-ease-soft);
+  }
+
+  @keyframes panel-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.985); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* Disclosure entrance for FAQ answers. */
+  details[open] .faq-body {
+    animation: faq-in 220ms var(--motion-ease-soft);
+  }
+
+  @keyframes faq-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  /* Gentle float with a slow 3D turn for the CTA watermark. */
+  .bob {
+    animation: bob 7s ease-in-out infinite alternate;
+  }
+
+  @keyframes bob {
+    from { transform: translateY(0) rotate3d(0, 1, 0, 0deg); }
+    to { transform: translateY(-14px) rotate3d(0, 1, 0, 14deg); }
+  }
+
+  /* Hero entrance: rise + de-blur. Delay via --reveal-delay. */
+  @keyframes reveal-lux {
+    from { opacity: 0; transform: translateY(16px); filter: blur(10px); }
+    to { opacity: 1; transform: none; filter: blur(0); }
+  }
+
+  .reveal-lux {
+    opacity: 0;
+    animation: reveal-lux 700ms var(--motion-ease-soft) forwards;
+    animation-delay: var(--reveal-delay, 0ms);
+  }
+
+  /* Pointer-premium card border: a soft accent arc fades in along the top
+     edge on hover/focus-without layout shift. */
+  .card-glow {
+    position: relative;
+  }
+
+  .card-glow::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: radial-gradient(
+      170px 64px at 50% 0%,
+      color-mix(in oklab, var(--accent) 55%, transparent),
+      transparent 75%
+    );
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity var(--motion-base) var(--motion-ease-soft);
+    pointer-events: none;
+  }
+
+  .card-glow:hover::after,
+  .card-glow:focus-within::after {
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   Reduced motion — mirrors the desktop app's SAYIT_REDUCED_MOTION philosophy:
+   non-essential movement is removed while usability is preserved. State
+   feedback (focus rings, color changes) still works; only movement collapses.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .reveal,
+  .reveal-stagger > * {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Scroll reveals render instantly — content must never stay hidden just
+     because an observer has not fired yet. */
+  .scroll-reveal[data-js="true"],
+  .scroll-reveal-stagger[data-js="true"] > * {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}

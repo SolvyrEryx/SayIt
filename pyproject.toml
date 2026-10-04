@@ -1,0 +1,88 @@
+[project]
+name = "sayit"
+version = "0.1.0"
+description = "Local-first push-to-talk voice typing for your desktop"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # Core dependencies - bundled with installer
+    "platformdirs>=4.5.1",
+    "pydantic>=2.12.5",
+    "pynput>=1.8.1",
+    "PySide6-Essentials>=6.6.0",
+    "sounddevice>=0.5.3",
+    "numpy>=1.26.0",
+    "sherpa-onnx>=1.12.21",
+    "litellm>=1.80.16",
+    "pyperclip>=1.9.0",
+    "sherpa-onnx-core>=1.12.23",
+]
+
+
+
+[project.gui-scripts]
+sayit = "sayit.app:main"
+
+[project.scripts]
+sayit-cli = "sayit.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = [
+    "black>=25.12.0",
+    "briefcase>=0.3.26",
+    "isort>=7.0.0",
+    "pre-commit>=4.5.1",
+    "pyside6>=6.10.1",
+    "pytest>=9.0.2",
+    "pytest-qt>=4.5.0",
+]
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+# ============================================================================
+# Briefcase Configuration
+# ============================================================================
+[tool.briefcase]
+project_name = "SayIt"
+bundle = "com.sayit"
+version = "0.1.0"
+author = "SayIt"
+license.file = "LICENSE"
+
+[tool.briefcase.app.sayit]
+formal_name = "SayIt"
+description = "SayIt — local push-to-talk voice typing for Windows"
+long_description = "SayIt is a lightweight push-to-talk voice-typing utility. Hold a hotkey, speak, release, and the locally-transcribed text is inserted at your cursor. Speech recognition runs on-device via Sherpa-ONNX."
+sources = ["src/sayit"]
+requires = [
+    "platformdirs>=4.5.1",
+    "pydantic>=2.12.5",
+    "pynput>=1.8.1",
+    "PySide6-Essentials>=6.6.0",
+    "sounddevice>=0.5.3",
+    "numpy>=1.26.0",
+    "sherpa-onnx>=1.12.21",
+    # sherpa-onnx-core provides the native ONNX Runtime + sherpa-onnx shared
+    # libraries that sherpa-onnx loads at runtime. It is a transitive dependency
+    # of sherpa-onnx (which pins ==1.12.21), but the top-level project pins
+    # >=1.12.23 deliberately (the validated core). It MUST be listed here with
+    # the SAME pin so the Briefcase-packaged app bundles the same validated core
+    # as the dev environment instead of silently resolving to the older
+    # transitive 1.12.21 (version drift). Not loosening any version.
+    "sherpa-onnx-core>=1.12.23",
+    "litellm>=1.80.16",
+    "pyperclip>=1.9.0",
+]
+
+[tool.briefcase.app.sayit.linux.appimage]
+manylinux = "manylinux_2_28"

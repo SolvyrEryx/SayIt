@@ -1,0 +1,36 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+*.dist-info/
+.pytest_cache/
+
+# Briefcase build cache / generated metadata
+.briefcase/
+
+# Build / release artifacts (distributed as GitHub Release assets, not committed)
+installer-output/
+*.exe
+*.AppImage
+*.msi
+*.sha256
+
+# Virtual environments
+.venv
+
+# Logs (runtime launch logs, etc.)
+*.log
+
+# Editor / tooling workspace
+.kiro/
+
+# Internal research evidence, phase reports, and generated benchmark data.
+# Not product source, not packaged, and intentionally excluded from the public
+# repository (keeps the public tree free of historical development material).
+artifacts/
+
+# personal documentation
+*private*.md
