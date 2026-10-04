@@ -39,6 +39,9 @@ class ConfigurationTab(QWidget):
     def __init__(self, settings: Settings, parent=None):
         super().__init__(parent)
         self._settings = settings
+        # Guard model/mode widget synchronization so UI mirroring never becomes
+        # a second writer of the persistent model selection.
+        self._syncing_model_selection = False
         self._setup_ui()
 
     def _setup_ui(self) -> None:
