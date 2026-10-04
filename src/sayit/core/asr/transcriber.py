@@ -1,4 +1,5 @@
 import gc
+import os
 import time
 from enum import Enum, auto
 from typing import Callable, Optional
@@ -8,6 +9,8 @@ import numpy as np
 from ...utils.logger import get_logger
 from ..audio.audio_processor import AudioProcessor, needs_chunking
 from .backends import SherpaOnnxBackend, TranscriptionResult
+from .models.downloader import ModelDownloader
+from .models.registry import get_model_by_id, is_model_downloaded
 
 
 class EngineState(Enum):
@@ -37,6 +40,7 @@ class TranscriptionEngine:
         # transducer (Parakeet) path ignores it entirely.
         self._whisper_num_threads = whisper_num_threads
         self._backend: Optional[SherpaOnnxBackend] = None
+        self._model_downloader: Optional[ModelDownloader] = None
         self._state = EngineState.NOT_LOADED
         self._device = "cpu"  # Will be updated by backend load
         self._audio_processor = AudioProcessor()
@@ -84,6 +88,42 @@ class TranscriptionEngine:
         if self._backend is not None and self._backend.is_loaded:
             return True
 
+        # Registry model IDs are downloaded automatically on first use. This
+        # avoids shipping large model weights inside the app installer.
+        if not os.path.isabs(self.model_name):
+            model_info = get_model_by_id(self.model_name)
+            if model_info is not None and not is_model_downloaded(self.model_name):
+                self._set_state(
+                    EngineState.DOWNLOADING,
+                    f"Downloading {model_info.name}...",
+                )
+                downloader = ModelDownloader()
+                self._model_downloader = downloader
+
+                def on_download_progress(downloaded: int, total: int) -> None:
+                    progress = (downloaded / total) if total else 0.0
+                    if self.on_download_progress:
+                        self.on_download_progress(progress)
+
+                def on_download_status(status: str) -> None:
+                    self._set_state(EngineState.DOWNLOADING, status)
+
+                try:
+                    downloaded = downloader.download(
+                        self.model_name,
+                        on_progress=on_download_progress,
+                        on_status=on_download_status,
+                    )
+                    if not downloaded:
+                        raise RuntimeError("Model download cancelled")
+                    if not is_model_downloaded(self.model_name):
+                        raise RuntimeError(
+                            f"Model download completed, but the installed files for "
+                            f"'{self.model_name}' are incomplete."
+                        )
+                finally:
+                    self._model_downloader = None
+
         self._set_state(
             EngineState.LOADING,
             f"Loading {self.backend_name} model: {self.model_name}...",
@@ -100,6 +140,11 @@ class TranscriptionEngine:
             f"Model loaded on {self._backend.device.upper()} ({self.backend_name})",
         )
         return True
+
+    def cancel_model_download(self) -> None:
+        """Request cooperative cancellation of a first-use model download."""
+        if self._model_downloader is not None:
+            self._model_downloader.cancel()
 
     def transcribe(
         self, audio_data: np.ndarray, sample_rate: int = 16000
