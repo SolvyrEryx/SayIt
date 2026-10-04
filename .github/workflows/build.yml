@@ -1,14 +1,20 @@
 name: Build Desktop App
 
 on:
+  push:
+    tags:
+      - "v*"          # Release build runs on a version tag; builds the TAGGED commit.
   release:
-    types: [created]  # Only build when a release is created
+    types: [created]  # Also build if a release is created from a tag.
   workflow_dispatch:  # Allow manual triggering
 
 env:
   APP_NAME: SayIt
-  # Version is set from git tag for releases, fallback to 0.1.0 for dev builds
-  APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '0.1.0' }}
+  # Raw tag ref name on a version tag (e.g. "v0.1.0"); "0.1.0" otherwise.
+  # The leading "v" is stripped in the steps that need a bare version
+  # (Briefcase build + AppImage filename) so the Linux asset is named
+  # SayIt-0.1.0-Linux-x86_64.AppImage.
+  APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v0.1.0' }}
 
 jobs:
   # ============================================================================
@@ -20,6 +26,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.ref }}
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -61,6 +69,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.ref }}
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -124,6 +134,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.ref }}
     
     - name: Free up disk space
       run: |
@@ -175,6 +187,7 @@ jobs:
         uv run briefcase package linux appimage
         
     - name: Find and rename AppImage
+      id: appimage
       run: |
         # Find the generated AppImage
         APPIMAGE=$(find build -name "*.AppImage" -type f | head -1)
@@ -183,14 +196,29 @@ jobs:
           find build -type f -name "*" | head -50
           exit 1
         fi
-        echo "Found AppImage: $APPIMAGE"
-        cp "$APPIMAGE" "${{ env.APP_NAME }}-${{ env.APP_VERSION }}-Linux-x86_64.AppImage"
-        
+        # Bare version without a leading "v" (v0.1.0 -> 0.1.0).
+        VERSION="${{ env.APP_VERSION }}"
+        VERSION="${VERSION#v}"
+        OUT="${{ env.APP_NAME }}-${VERSION}-Linux-x86_64.AppImage"
+        echo "Found AppImage: $APPIMAGE -> $OUT"
+        cp "$APPIMAGE" "$OUT"
+        echo "name=$OUT" >> "$GITHUB_OUTPUT"
+
+    - name: Generate SHA-256 checksum
+      run: |
+        OUT="${{ steps.appimage.outputs.name }}"
+        HASH="$(sha256sum "$OUT" | cut -d' ' -f1)"
+        echo "$HASH  $(basename "$OUT")" > "$OUT.sha256"
+        cat "$OUT.sha256"
+
     - name: Upload Linux AppImage
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.APP_NAME }}-Linux-x64-AppImage
-        path: "${{ env.APP_NAME }}-${{ env.APP_VERSION }}-Linux-x86_64.AppImage"
+        path: |
+          ${{ steps.appimage.outputs.name }}
+          ${{ steps.appimage.outputs.name }}.sha256
+        if-no-files-found: error
         if-no-files-found: error
 
   # ============================================================================
@@ -241,6 +269,7 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
+        tag_name: ${{ github.event.release.tag_name || github.ref_name }}
         generate_release_notes: true
         files: release-files/*
         draft: true  # Create as draft so you can review before publishing
