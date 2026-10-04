@@ -1,12 +1,19 @@
 # Changelog
 
-All notable changes to this project are documented here. The project version in
-`pyproject.toml` is `0.1.0`; no release has been published yet.
+All notable changes to this project are documented here. The project version in `pyproject.toml` is `0.1.1`. Version 0.1.1 is a bugfix/release update built from the current main branch.
 
 This changelog describes work completed during a reliability, UX, and
 privacy-hardening effort. Items are listed only where they correspond to actual
 code and passing automated tests. Behavior that has not been validated end-to-end
 (for example, real ASR model-backed transcription) is noted as such in the README.
+
+## [0.1.1] - 2026-10-04
+
+### Release / bug fixes
+- Fixed persistent ASR model selection being overwritten by the Speech Mode controls.
+- Fixed settings reset so it persists to disk, immediately reapplies the runtime settings, and preserves the typed `HotkeyConfig`.
+- Added regression coverage for model and custom-hotkey disk persistence and reset behavior.
+- Added the SayIt OS icon packaging pipeline and removed the BeeWare default icon from the packaged executable.
 
 ## [Unreleased]
 

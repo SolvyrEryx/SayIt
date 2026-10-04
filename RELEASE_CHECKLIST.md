@@ -1,18 +1,18 @@
 # Release Checklist
 
-## Phase 7 release-candidate summary (SayIt Windows)
+## Phase 7 release-candidate summary (SayIt Windows — v0.1.1)
 
 Concrete, measured values from the Phase 7 effort. Fields that require the
 Inno Setup build or a human are marked PENDING with where to obtain them.
 
 | Field | Value |
 |-------|-------|
-| Version | 0.1.0 (single version across `__init__.py`, `pyproject.toml`, Briefcase, exe metadata, `.iss` default) |
-| Commit | current working tree (tag `v0.1.0` to be created at release) |
+| Version | 0.1.1 (single version across `__init__.py`, `pyproject.toml`, Briefcase, exe metadata, `.iss` default) |
+| Commit | v0.1.1 release commit (tag created by CI release workflow) |
 | Target OS / arch | Windows 10+ / x64 |
 | Build system | Briefcase 0.3.26 (PySide6 app) + Inno Setup (installer) |
 | App build command | `uv run python scripts/build.py` → `briefcase create/build windows app` |
-| Installer build command | `iscc /O+ /DMyAppVersion=0.1.0 installer.iss` |
+| Installer build command | `iscc /O+ /DMyAppVersion=0.1.1 installer.iss` |
 | Built executable | `build\sayit\windows\app\src\SayIt.exe` (138,752 bytes) — VERIFIED |
 | Exe metadata | ProductName/FileDescription/CompanyName = SayIt; version 0.1.0 — VERIFIED |
 | Bundle size | ≈ 480 MB (no model weights bundled) — VERIFIED |
@@ -38,7 +38,7 @@ SmartScreen may warn on first run. Signing is a release consideration, not done.
 
 ---
 
-Pre-release validation gates for the first public release. This is a checklist to
+Pre-release validation gates for the v0.1.1 bugfix release. This is a checklist to
 run **later**; items marked pending reflect what has not yet been validated.
 
 ## Product (end-to-end, requires an installed model)
