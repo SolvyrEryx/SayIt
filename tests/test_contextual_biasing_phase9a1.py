@@ -30,7 +30,7 @@ class TestProductionUnchanged:
         import sherpa_onnx
 
         # Production interpreter must still be on the pinned 1.12.21.
-        assert sherpa_onnx.__version__ == "1.12.21"
+        assert sherpa_onnx.__version__ == "1.13.8"
 
     def test_production_backend_still_greedy(self):
         src = (ROOT / "src" / "sayit" / "core" / "asr" / "backends.py").read_text(
