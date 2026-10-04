@@ -40,7 +40,7 @@ describe("DownloadCenter — no published manifest available", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/hasn.t been published yet/i),
+        screen.getByText(/no published release manifest is available right now/i),
       ).toBeInTheDocument();
     });
 

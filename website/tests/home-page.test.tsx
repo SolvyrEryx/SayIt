@@ -40,6 +40,17 @@ describe("Home page (landing redesign)", () => {
     expect(screen.getAllByRole("link", { name: /source/i }).length).toBeGreaterThan(0);
   });
 
+  it("shows the live release announcement and official artifact links", () => {
+    render(<HomePage />);
+    expect(
+      screen.getByText("The latest SayIt release is live for Windows and Linux."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download SayIt" })).toHaveAttribute(
+      "href",
+      "/download",
+    );
+  });
+
   it("credits GitHub as the artifact home", () => {
     render(<HomePage />);
     expect(screen.getByRole("link", { name: "source" })).toHaveAttribute(

@@ -1,9 +1,8 @@
 name: Deploy Website
 
 # Deploys the static site to GitHub Pages. The release manifest is fetched
-# from the latest published release (the release job ships it as an asset);
-# when no release exists, the site deploys with its honest "first release not
-# published" fallback instead of any fabricated download data.
+# from the latest published release; if no published release or manifest
+# exists, the site deploys with an honest fallback instead of fabricated data.
 
 on:
   push:
@@ -11,8 +10,6 @@ on:
     paths:
       - "website/**"
       - ".github/workflows/website-deploy.yml"
-  release:
-    types: [published] # the published release's manifest ships with the deploy
   workflow_dispatch:
 
 permissions:
@@ -35,8 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Always deploy the current website from main, even when a release event
-          # starts this workflow. The v0.1.0 tag is intentionally frozen. 
+          # Website deployments always come from the current main branch.
           ref: main
 
       - uses: actions/setup-node@v4
