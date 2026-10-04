@@ -219,7 +219,6 @@ jobs:
           ${{ steps.appimage.outputs.name }}
           ${{ steps.appimage.outputs.name }}.sha256
         if-no-files-found: error
-        if-no-files-found: error
 
   # ============================================================================
   # Release - Create GitHub Release when a version tag is pushed
@@ -233,6 +232,16 @@ jobs:
       contents: write
     
     steps:
+    - name: Check out the tagged commit
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.ref }}
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
