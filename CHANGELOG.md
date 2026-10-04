@@ -12,7 +12,9 @@ code and passing automated tests. Behavior that has not been validated end-to-en
 ### Release / bug fixes
 - Fixed persistent ASR model selection being overwritten by the Speech Mode controls.
 - Fixed settings reset so it persists to disk, immediately reapplies the runtime settings, and preserves the typed `HotkeyConfig`.
-- Added regression coverage for model and custom-hotkey disk persistence and reset behavior.
+- Fixed live custom hotkey replacement: applying a new hotkey now tears down the old global keyboard listener, clears stale pressed-key state, and registers the new combination immediately.
+- Preserved custom hotkey restoration on startup from the persisted `settings.json` configuration.
+- Added regression coverage for model and custom-hotkey disk persistence, startup restoration, and live hotkey re-registration.
 - Added the SayIt OS icon packaging pipeline and removed the BeeWare default icon from the packaged executable.
 
 ## [0.1.1] - 2026-10-04
