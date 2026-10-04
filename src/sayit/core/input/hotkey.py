@@ -39,8 +39,31 @@ class HotkeyListener(QObject):
         self._impl = _PynputHotkeyListenerImpl(self)
 
     def update_settings(self, settings: Settings) -> None:
+        """Replace the active hotkey registration with the newly saved config.
+
+        The settings object is already persisted by SettingsWindow before this
+        callback is emitted. When the listener is running, stop the old
+        keyboard listener completely before registering the new configuration;
+        this prevents stale registrations and guarantees the new hotkey takes
+        effect immediately.
+        """
+        was_running = self._impl.is_running
+
+        if self._is_hotkey_active:
+            # A hotkey change while the old combination is held must not leave
+            # the application believing a recording is still active.
+            self._on_hotkey_released()
+
+        if was_running:
+            self._impl.stop()
+
+        self._pressed_keys.clear()
+
         self._setup_hotkey(settings)
         self._impl.update_config(self._trigger_key, self._required_modifier_types)
+
+        if was_running:
+            self._impl.start()
 
     def _setup_hotkey(self, settings: Settings) -> None:
         self._required_modifier_types: Set[str] = set(settings.hotkey.modifiers)
@@ -154,8 +177,18 @@ class _PynputHotkeyListenerImpl:
         if not self._check_hotkey():
             self._listener._on_hotkey_released()
 
+    @property
+    def is_running(self) -> bool:
+        return (
+            self._keyboard_listener is not None
+            and self._keyboard_listener.is_alive()
+        )
+
     def start(self) -> None:
         from pynput import keyboard
+
+        if self.is_running:
+            return
 
         self._keyboard_listener = keyboard.Listener(
             on_press=self._on_press, on_release=self._on_release
@@ -172,6 +205,17 @@ class _PynputHotkeyListenerImpl:
                 )
 
     def stop(self) -> None:
-        if self._keyboard_listener:
-            self._keyboard_listener.stop()
+        listener = self._keyboard_listener
+        if listener is None:
+            self._pressed_keys.clear()
+            return
+
+        try:
+            listener.stop()
+            # update_settings() can immediately start a replacement listener.
+            # Join here so the old OS keyboard hook is fully torn down first.
+            if listener.is_alive():
+                listener.join()
+        finally:
             self._keyboard_listener = None
+            self._pressed_keys.clear()
