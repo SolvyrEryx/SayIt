@@ -15,11 +15,8 @@ dependencies = [
 
     "litellm>=1.80.16",
     "pyperclip>=1.9.0",
-    "sherpa-onnx @ https://files.pythonhosted.org/packages/fd/2f/1bc6db090dae477db400421ebc419b6e2677750220355a0790a175a58f0c/sherpa_onnx-1.12.21-cp312-cp312-win_amd64.whl ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.12'",
-    "sherpa-onnx @ https://files.pythonhosted.org/packages/39/f5/d3ddbc62dcfaa93c6beccabfffceec2f586c46cf54d151f64b7469ade4/sherpa_onnx-1.12.21-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'",
-    "sherpa-onnx @ https://files.pythonhosted.org/packages/00/ca/bf6d9b07e9b70d96b97d7d630832fca958f0ed47ae60d4fbb549eaaae42f/sherpa_onnx-1.12.21-cp313-cp313-win_amd64.whl ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.13'",
-    "sherpa-onnx @ https://files.pythonhosted.org/packages/aa/7b/fd834b262c97db6ac03f9fb7c271b4197387cd7be364d8e99513dc18670e/sherpa_onnx-1.12.21-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.13'",
-    "sherpa-onnx-core==1.12.23",
+    "sherpa-onnx==1.13.8",
+    "sherpa-onnx-core==1.13.8",
 ]
 
 
@@ -83,12 +80,9 @@ requires = [
     "PySide6-Essentials>=6.6.0",
     "sounddevice>=0.5.3",
     "numpy>=1.26.0",
-    "sherpa-onnx @ https://files.pythonhosted.org/packages/fd/2f/1bc6db090dae477db400421ebc419b6e2677750220355a0790a175a58f0c/sherpa_onnx-1.12.21-cp312-cp312-win_amd64.whl ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.12'",
-    "sherpa-onnx @ https://files.pythonhosted.org/packages/39/f5/d3ddbc62dcfaa93c6beccabfffceec2f586c46cf54d151f64b7469ade4/sherpa_onnx-1.12.21-cp312-cp312-manylinux2014_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'",
-    "sherpa-onnx @ https://files.pythonhosted.org/packages/00/ca/bf6d0809e7b07d96b97d7d630832fca958f0ed47ae60d4fbb549eaaae42f/sherpa_onnx-1.12.21-cp313-cp313-win_amd64.whl ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.13'",
-    "sherpa-onnx @ https://files.pythonhosted.org/packages/aa/7b/fd834b262c97db6ac03f9fb7c271b4197387cd7be364d8e99513dc18670e/sherpa_onnx-1.12.21-cp313-cp313-manylinux2014_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.13'",
     # Keep the native ASR core validated with sherpa-onnx 1.12.21.
-    "sherpa-onnx-core==1.12.23",
+    "sherpa-onnx==1.13.8",
+    "sherpa-onnx-core==1.13.8",
     "litellm>=1.80.16",
     "pyperclip>=1.9.0",
 ]
