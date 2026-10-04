@@ -15,7 +15,7 @@ def test_configuration_hotkey_parses_ctrl_space(qtbot):
     qtbot.addWidget(edit)
     edit.setKeySequence(QKeySequence("Ctrl+Space"))
 
-    tab = object.__new__(ConfigurationTab)
+    tab = ConfigurationTab.__new__(ConfigurationTab)
     tab._hotkey_edit = edit
 
     result = tab._parse_key_sequence()
