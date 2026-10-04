@@ -237,7 +237,7 @@ uv run pytest -m "not slow" # run the test suite (headless)
 uv run python -m sayit      # run the app
 ```
 
-The validated runtime is **sherpa-onnx 1.12.21 + sherpa-onnx-core 1.12.21**
+The validated runtime is **sherpa-onnx 1.12.21 + sherpa-onnx-core 1.12.23**
 (pinned together). Do not upgrade either without re-validation.
 
 ## Project structure
