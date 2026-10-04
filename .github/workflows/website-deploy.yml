@@ -10,6 +10,8 @@ on:
     paths:
       - "website/**"
       - ".github/workflows/website-deploy.yml"
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
