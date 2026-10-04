@@ -844,6 +844,16 @@ class TranscribeApp(QObject):
         except Exception as e:
             logger.error(f"Error stopping recorder during shutdown: {e}")
 
+        # Cooperatively cancel an in-flight model download/load first so
+        # no QThread survives application teardown.
+        if (
+            self._model_loader_thread is not None
+            and self._model_loader_thread.isRunning()
+        ):
+            self._model_loader_thread.cancel()
+            self._model_loader_thread.wait()
+        self._model_loader_thread = None
+
         # Cooperatively cancel an in-flight transcription and wait for it to
         # finish; never force-kill the thread.
         if (
