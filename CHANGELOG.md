@@ -15,6 +15,12 @@ code and passing automated tests. Behavior that has not been validated end-to-en
 - Added regression coverage for model and custom-hotkey disk persistence and reset behavior.
 - Added the SayIt OS icon packaging pipeline and removed the BeeWare default icon from the packaged executable.
 
+## [0.1.1] - 2026-10-04
+
+### Release / CI fixes
+- Aligned `sherpa-onnx-core` with the validated `sherpa-onnx 1.12.21` release to avoid a Linux native ONNX Runtime symbol mismatch during CI.
+- Updated CI dependency resolution so the build environment refreshes the lock consistently before testing and packaging.
+
 ## [Unreleased]
 
 ### Local intelligence layer (Phase 8A–8H)
