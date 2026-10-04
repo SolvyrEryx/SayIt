@@ -123,11 +123,14 @@ class TestLiveCompatibilityProbe:
         d = Path(base) / "SayIt" / "models" / "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
         return d if d.is_dir() else None
 
-    def test_modified_beam_search_aborts_for_nemo(self):
+    def test_modified_beam_search_loads_for_nemo_on_current_runtime(self):
         try:
-            import sherpa_onnx  # noqa: F401
+            import sherpa_onnx
         except Exception:
             pytest.skip("sherpa_onnx not installed")
+        # The production runtime is now pinned to the current upstream release
+        # that resolved Phase 9A's NeMo modified-beam incompatibility.
+        assert sherpa_onnx.__version__ == "1.13.8"
         d = self._model_dir()
         if d is None:
             pytest.skip("Parakeet model not downloaded")
@@ -146,7 +149,6 @@ class TestLiveCompatibilityProbe:
         proc = subprocess.run(
             [sys.executable, "-c", probe], capture_output=True, text=True, timeout=120
         )
-        # Hard abort: non-zero return code and no 'LOADED' printed.
-        assert proc.returncode != 0
-        assert "LOADED" not in (proc.stdout or "")
-        assert "Unsupported decoding method" in (proc.stderr or "")
+        # 1.13.8 supports this construction for the exact Parakeet model.
+        assert proc.returncode == 0, proc.stderr
+        assert "LOADED" in (proc.stdout or "")
