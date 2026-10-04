@@ -54,10 +54,9 @@ class HotkeyListener(QObject):
             # the application believing a recording is still active.
             self._on_hotkey_released()
 
-        if was_running:
-            self._impl.stop()
-
-        self._pressed_keys.clear()
+        # Always clear the implementation's pressed-key state. This is
+        # especially important when a prior combination was partially pressed.
+        self._impl.stop()
 
         self._setup_hotkey(settings)
         self._impl.update_config(self._trigger_key, self._required_modifier_types)
