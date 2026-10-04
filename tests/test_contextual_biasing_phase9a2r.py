@@ -164,7 +164,7 @@ class TestProductionIsolation:
     def test_production_sherpa_pin(self):
         import sherpa_onnx
 
-        assert sherpa_onnx.__version__ == "1.12.21"
+        assert sherpa_onnx.__version__ == "1.13.8"
 
     def test_backend_greedy_unchanged(self):
         src = (ROOT / "src" / "sayit" / "core" / "asr" / "backends.py").read_text(
