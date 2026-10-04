@@ -12,7 +12,7 @@
 #define MyAppURL "https://github.com/VptrCipher/SayIt"
 ; The Briefcase-built executable is named SayIt.exe (technical identifier).
 #define MyAppExeName "SayIt.exe"
-#define MyAppIcon "icons\\sayit.ico"
+#define MyAppIcon "icons\sayit.ico"
 
 [Setup]
 ; Unique application identifier - NEVER change this after first release.
