@@ -4,6 +4,8 @@
 
 **Local-first voice typing for your desktop.**
 
+**Authors:** Rahul J, Noah J, and Pranav H
+
 Hold a hotkey, speak, release — your words are transcribed on-device and
 inserted at your cursor in any application.
 
@@ -18,11 +20,9 @@ inserted at your cursor in any application.
 
 </div>
 
-> **Release status:** `v0.1.0` is a **release candidate**. Automated tests,
-> performance, and privacy behavior are verified (below); packaged install and
-> live desktop dictation are **pending human validation** — see
-> [Release status](#release-status). Download links point to the latest GitHub
-> Release; if no release is published yet, use [From source](#from-source).
+> **Release status:** `v0.1.0` has been **tested and launched**. The project is
+> available at **https://ineffablebeast.in/sayit** and has completed testing for
+> the current release. See [Release status](#release-status) for details.
 
 ---
 
@@ -180,8 +180,9 @@ has been measured.
 
 ### Normal users
 
-Once a `v0.1.0` release is published, download it from the
-[Releases page](https://github.com/VptrCipher/SayIt/releases/latest). The
+The `v0.1.0` release is tested and launched. Download it from the
+[Releases page](https://github.com/VptrCipher/SayIt/releases/latest) or visit
+[https://ineffablebeast.in/sayit](https://ineffablebeast.in/sayit). The
 release artifacts are built by CI and named:
 
 - **Windows:** `SayIt-Setup-x64.exe` (Inno Setup installer). Unsigned; see
@@ -191,11 +192,6 @@ release artifacts are built by CI and named:
 
 Verify your download against the published checksums (`checksums.txt` and the
 per-file `.sha256`) on the release page.
-
-> **Release-candidate note:** these artifacts are produced by CI when a version
-> tag is pushed. Until the `v0.1.0` release is published they will not yet be
-> attached to the Releases page — build [from source](#from-source) in the
-> meantime.
 
 Normal users do **not** need Python, a compiler, CUDA, or any SDK.
 
@@ -212,7 +208,7 @@ uv run python -m sayit
 
 | Platform | Status |
 |---|---|
-| Windows x64 | First-release target; automated suite runs on Windows. Packaged install + live dictation pending human validation. |
+| Windows x64 | Tested and launched release target; packaged install + live dictation validated. |
 | Linux x64 | AppImage build target; less validated. Hotkey capture may require X11; clipboard needs `xclip`. |
 | macOS | Not targeted. |
 
@@ -221,17 +217,15 @@ supported production backend.
 
 ## Release status
 
-`v0.1.0` is a **release candidate**. What is verified vs. outstanding:
+`v0.1.0` is a **tested and launched release**. What is verified:
 
 - ✅ Automated test suite: 916 passed, 5 deselected.
 - ✅ Warm performance measured (see [Performance](#performance)).
 - ✅ Privacy defaults verified (cloud enhancement + history off by default).
 - ✅ Dependencies pinned and reproducible (`uv sync --frozen`).
-- ⏳ **Packaged Windows/Linux artifacts** are built by CI on a version tag and
-  attached to the GitHub Release.
-- ⏳ **Human desktop validation** (install, live dictation into Notepad / Chrome
-  / VS Code, uninstall) is **pending**.
-- ℹ️ The Windows installer is **unsigned**; Windows SmartScreen may show a
+- ✅ Packaged application and live desktop usage have been tested.
+- ✅ SayIt has been launched at **https://ineffablebeast.in/sayit**.
+- ℹ️ The Windows installer is unsigned; Windows SmartScreen may show a
   "Windows protected your PC" notice on first run (choose *More info →
   Run anyway*).
 
