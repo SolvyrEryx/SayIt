@@ -37,7 +37,6 @@ class TestSettingField:
 
     @pytest.mark.parametrize("value", [1, 2, 3, 5, 7, 12, 100, 0, -4])
     def test_invalid_int_coerced_to_4_via_constructor(self, value):
-        # Field validator coerces out-of-set integers to the default.
         assert Settings(whisper_small_cpu_threads=value).whisper_small_cpu_threads == 4
 
     def test_not_coupled_to_experimental_flag(self):
@@ -47,12 +46,8 @@ class TestSettingField:
 
 
 class TestLoadBackwardCompat:
-    """_load_with_fallbacks + the load() clamp (model_construct bypasses
-    validators, so an out-of-set INTEGER must still be clamped)."""
-
     def test_missing_key_defaults_to_4(self):
         s = Settings._load_with_fallbacks({"model_id": "x"})
-        # the clamp lives in load(); _load_with_fallbacks fills the default here
         assert s.whisper_small_cpu_threads == 4
 
     @pytest.mark.parametrize("value,expected", [(4, 4), (6, 6), (8, 8)])
@@ -91,7 +86,14 @@ class TestBackendRouting:
     """The thread count reaches the whisper loader; the transducer loader never
     receives it (Parakeet is unaffected)."""
 
+    def _mock_model_dir(self, monkeypatch):
+        # These routing tests exercise model-type/thread dispatch, not model
+        # download/caching. Keep the real backend cache check intact in production
+        # while isolating it here.
+        monkeypatch.setattr(os.path, "isdir", lambda path: True)
+
     def test_whisper_receives_num_threads_and_transducer_does_not(self, monkeypatch):
+        self._mock_model_dir(monkeypatch)
         captured = {}
 
         def fake_w(self, so, path, num_threads=4):
@@ -109,10 +111,10 @@ class TestBackendRouting:
         assert captured["whisper"] == 8
 
         SherpaOnnxBackend().load(SM.FAST_MODEL_ID, whisper_num_threads=8)
-        # transducer path was taken and did NOT get the thread param
         assert captured["transducer"] == "called_without_threads"
 
     def test_backend_load_default_whisper_threads_is_4(self, monkeypatch):
+        self._mock_model_dir(monkeypatch)
         captured = {}
 
         def fake_w(self, so, path, num_threads=4):
@@ -120,7 +122,7 @@ class TestBackendRouting:
             self._recognizer = object()
 
         monkeypatch.setattr(SherpaOnnxBackend, "_load_whisper_model", fake_w)
-        SherpaOnnxBackend().load(SM.HIGHER_ACCURACY_MODEL_ID)  # no explicit arg
+        SherpaOnnxBackend().load(SM.HIGHER_ACCURACY_MODEL_ID)
         assert captured["whisper"] == 4
 
 
@@ -143,8 +145,6 @@ class TestEngineThreading:
 
 class TestParakeetUnaffected:
     def test_parakeet_default_model_and_threads_setting_independent(self):
-        # Default model stays Parakeet; the thread setting is a separate field
-        # that the transducer path ignores.
         s = Settings()
         assert s.model_id == SM.FAST_MODEL_ID
         assert s.whisper_small_cpu_threads == 4
@@ -175,7 +175,7 @@ class TestUISelector:
         assert tab._settings.whisper_small_cpu_threads == 8
 
     def test_load_reflects_persisted_value(self):
-        from PySide6.QtWidgets import QApplication  # noqa
+        from PySide6.QtWidgets import QApplication
         from sayit.ui.tabs.configuration_tab import ConfigurationTab
         tab = ConfigurationTab(Settings(whisper_small_cpu_threads=6))
         tab.load_settings()
