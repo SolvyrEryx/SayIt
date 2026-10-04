@@ -40,7 +40,7 @@ describe("Home page (landing redesign)", () => {
     expect(screen.getAllByRole("link", { name: /source/i }).length).toBeGreaterThan(0);
   });
 
-  it("credits GitHub as the artifact home until a release exists", () => {
+  it("credits GitHub as the artifact home", () => {
     render(<HomePage />);
     expect(screen.getByRole("link", { name: "source" })).toHaveAttribute(
       "href",

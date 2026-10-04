@@ -34,6 +34,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Always deploy the current website from main, even when a release event
+          # starts this workflow. The v0.1.0 tag is intentionally frozen. 
+          ref: main
 
       - uses: actions/setup-node@v4
         with:

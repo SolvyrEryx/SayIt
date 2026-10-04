@@ -109,12 +109,12 @@ export function DownloadCenter({ platform: platformOverride }: { platform?: Plat
           {state.reason === "missing" ? (
             <div className="rounded-xl border border-line bg-subtle p-6 text-sm leading-relaxed text-body sm:p-8">
               <h2 className="text-base font-semibold text-strong">
-                The first public release hasn&rsquo;t been published yet.
+                No published release manifest is available right now.
               </h2>
               <p className="mt-2">
-                When it ships, the Windows installer and Linux AppImage will appear right here —
-                with version, release date, and SHA-256 checksums, straight from the official
-                release. Until then, source code and any pre-release artifacts live on{" "}
+                A published release normally appears here with version, release date, and
+                SHA-256 checksums sourced from the official release. Until it is available,
+                use{" "}
                 <a
                   className="font-medium text-strong underline decoration-line-strong underline-offset-2 hover:text-accent-text"
                   href={site.releasesUrl}

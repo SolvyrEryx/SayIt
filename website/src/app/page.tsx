@@ -112,14 +112,14 @@ export default function HomePage() {
             className="reveal-lux mx-auto mt-6 max-w-xl text-sm text-muted"
             style={{ "--reveal-delay": "360ms" } as CSSProperties}
           >
-            Installers for Windows and Linux appear in the{" "}
+            Windows and Linux installers are available in the{" "}
             <Link
               className="font-medium text-strong underline decoration-line-strong underline-offset-2 hover:text-accent-text"
               href="/download"
             >
               download center
             </Link>{" "}
-            with the first public release. Until then, the{" "}
+            from the latest published release. The{" "}
             <a
               className="font-medium text-strong underline decoration-line-strong underline-offset-2 hover:text-accent-text"
               href={site.repositoryUrl}

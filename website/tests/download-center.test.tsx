@@ -32,7 +32,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("DownloadCenter — no release published yet", () => {
+describe("DownloadCenter — no published manifest available", () => {
   it("shows the honest no-release state with working GitHub fallbacks", async () => {
     stubFetch(async () => ({ ok: false }));
 

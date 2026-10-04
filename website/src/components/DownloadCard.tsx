@@ -92,8 +92,8 @@ export function DownloadCard({
       <div className="mt-4 flex-1">
         {status === "planned" ? (
           <p className="text-sm leading-relaxed text-muted">
-            This installer is published with the first public release. Nothing is available for
-            download yet — the link below always points at the official source.
+            This platform is not included in the latest published release. The link below always
+            points to the official GitHub Releases page.
           </p>
         ) : null}
         {status === "unavailable" ? (

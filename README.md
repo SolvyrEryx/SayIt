@@ -20,9 +20,9 @@ inserted at your cursor in any application.
 
 </div>
 
-> **Release status:** `v0.1.0` has been **tested and launched**. The project is
-> available at **https://ineffablebeast.in/sayit** and has completed testing for
-> the current release. See [Release status](#release-status) for details.
+> **Release status:** `v0.1.0` has been **tested and launched**. The official
+> website is **https://vptrcipher.github.io/SayIt/**. See [Release status](#release-status)
+> for details.
 
 ---
 
@@ -182,7 +182,7 @@ has been measured.
 
 The `v0.1.0` release is tested and launched. Download it from the
 [Releases page](https://github.com/VptrCipher/SayIt/releases/latest) or visit
-[https://ineffablebeast.in/sayit](https://ineffablebeast.in/sayit). The
+[https://vptrcipher.github.io/SayIt/](https://vptrcipher.github.io/SayIt/). The
 release artifacts are built by CI and named:
 
 - **Windows:** `SayIt-Setup-x64.exe` (Inno Setup installer). Unsigned; see
@@ -224,7 +224,7 @@ supported production backend.
 - ✅ Privacy defaults verified (cloud enhancement + history off by default).
 - ✅ Dependencies pinned and reproducible (`uv sync --frozen`).
 - ✅ Packaged application and live desktop usage have been tested.
-- ✅ SayIt has been launched at **https://ineffablebeast.in/sayit**.
+- ✅ SayIt has been launched at **https://vptrcipher.github.io/SayIt/**.
 - ℹ️ The Windows installer is unsigned; Windows SmartScreen may show a
   "Windows protected your PC" notice on first run (choose *More info →
   Run anyway*).
