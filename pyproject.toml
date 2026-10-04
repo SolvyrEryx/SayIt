@@ -3,7 +3,7 @@ name = "sayit"
 version = "0.1.1"
 description = "Local-first push-to-talk voice typing for your desktop"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     # Core dependencies - bundled with installer
     "platformdirs>=4.5.1",
