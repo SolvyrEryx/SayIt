@@ -113,4 +113,4 @@ class TestProductionFrozen:
 
     def test_sherpa_pin(self):
         import sherpa_onnx
-        assert sherpa_onnx.__version__ == "1.12.21"
+        assert sherpa_onnx.__version__ == "1.13.8"
