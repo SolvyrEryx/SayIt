@@ -138,6 +138,28 @@
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
+
+  /* Quiet premium scrollbars — thin, rounded, warm-neutral thumb. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-color: var(--border-strong);
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 @layer components {
@@ -380,6 +402,62 @@
     to { transform: scaleY(1); }
   }
 
+  /* Section underline: brand spectrum rule that grows as the section scrolls
+     into view (scroll-driven where supported). Without animation-timeline
+     support the zero-duration animation lands on the final keyframe — a
+     static gradient rule, which is the intended fallback. */
+  .section-underline {
+    background: linear-gradient(90deg, #8a63f6, #4e7df9, #2fb39a);
+    animation: grow-x linear both;
+    animation-timeline: view();
+    animation-range: entry 30% cover 35%;
+  }
+
+  @keyframes grow-x {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  /* Scroll progress hairline pinned to the top edge (ScrollProgress.tsx). */
+  .scroll-progress {
+    animation: grow-x linear both;
+    animation-timeline: scroll(root block);
+  }
+
+  /* Ink-spectrum text: the brand gradient, darkened to hold large-text
+     contrast on beige. Large text only (3:1 applies, not 4.5:1). */
+  .text-spectrum {
+    background: linear-gradient(90deg, #6d50e0, #3e63e8 55%, #1f8a76);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Brand symbol entrance → live idle loop: bars rise in sequence, then
+     settle into a gentle per-bar breathing pulse (the mark stays "live" in
+     the hero). The second animation starts after the rise and overrides the
+     transform seamlessly from scaleY(1). Reduced motion collapses both. */
+  .mark-rise {
+    transform-box: fill-box;
+    transform-origin: bottom;
+    animation:
+      mark-rise 0.8s var(--motion-ease-spring) both,
+      mark-breathe 3.6s ease-in-out infinite alternate;
+    animation-delay:
+      calc(var(--i, 0) * 90ms),
+      calc(1s + var(--i, 0) * 160ms);
+  }
+
+  @keyframes mark-rise {
+    from { transform: scaleY(0); }
+    to { transform: scaleY(1); }
+  }
+
+  @keyframes mark-breathe {
+    from { transform: scaleY(1); }
+    to { transform: scaleY(0.6); }
+  }
+
   /* ========================================================================
      Premium landing layer — aurora glows, hero visualizer, marquee, panel
      and disclosure transitions, card glow. Every animated element's BASE
@@ -525,8 +603,9 @@
     animation-delay: var(--reveal-delay, 0ms);
   }
 
-  /* Pointer-premium card border: a soft accent arc fades in along the top
-     edge on hover/focus-without layout shift. */
+  /* Pointer-premium card border: a soft accent glow that follows the cursor
+     (--mx/--my are set by CardGlowCursor, one delegated listener sitewide;
+     without a pointer they fall back to the top-center arc). */
   .card-glow {
     position: relative;
   }
@@ -538,9 +617,9 @@
     border-radius: inherit;
     padding: 1px;
     background: radial-gradient(
-      170px 64px at 50% 0%,
-      color-mix(in oklab, var(--accent) 55%, transparent),
-      transparent 75%
+      240px circle at var(--mx, 50%) var(--my, 0%),
+      color-mix(in oklab, var(--accent) 60%, transparent),
+      transparent 70%
     );
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;

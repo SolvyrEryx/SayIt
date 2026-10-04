@@ -9,7 +9,7 @@ type PrivacyCardProps = {
 
 export function PrivacyCard({ icon, title, body }: PrivacyCardProps) {
   return (
-    <Card className="h-full p-6">
+    <Card className="card-glow h-full p-6">
       <span className="inline-flex size-9 items-center justify-center rounded-md bg-accent-soft text-accent">
         {icon}
       </span>

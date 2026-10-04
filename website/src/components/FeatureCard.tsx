@@ -14,7 +14,7 @@ type FeatureCardProps = {
 
 export function FeatureCard({ title, body, kbd, icon, className = "" }: FeatureCardProps) {
   return (
-    <Card className={`flex h-full flex-col p-6 ${className}`.trim()}>
+    <Card className={`card-glow flex h-full flex-col p-6 ${className}`.trim()}>
       {icon ? (
         <span className="mb-3 inline-flex size-9 items-center justify-center rounded-md bg-accent-soft text-accent">
           {icon}

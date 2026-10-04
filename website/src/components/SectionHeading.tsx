@@ -28,6 +28,10 @@ export function SectionHeading({
         <p className="text-sm font-semibold uppercase tracking-wider text-accent-text">{eyebrow}</p>
       ) : null}
       <h2 className="mt-2 text-2xl font-semibold tracking-tight text-strong sm:text-3xl">{title}</h2>
+      <span
+        aria-hidden="true"
+        className={`section-underline mt-3 block h-[3px] w-20 origin-left rounded-full ${center ? "mx-auto" : ""}`.trim()}
+      />
       {description ? (
         <p
           className={`mt-3 max-w-2xl text-base leading-relaxed text-muted ${center ? "mx-auto" : ""}`.trim()}

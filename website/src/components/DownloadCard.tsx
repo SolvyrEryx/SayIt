@@ -64,7 +64,7 @@ export function DownloadCard({
   const badge = STATUS_BADGES[status];
 
   return (
-    <Card className="flex h-full flex-col p-6">
+    <Card className="card-glow flex h-full flex-col p-6">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-lg font-semibold text-strong">{platformName}</h3>
         {detected ? (

@@ -13,6 +13,7 @@ import { PlatformStatus } from "@/components/PlatformStatus";
 import { ProfileTabs } from "@/components/ProfileTabs";
 import { Reveal } from "@/components/Reveal";
 import { SectionHeading } from "@/components/SectionHeading";
+import { SayItMark } from "@/components/SayItMark";
 import { SpeakCompare } from "@/components/SpeakCompare";
 import { Spotlight } from "@/components/Spotlight";
 import { TiltCard } from "@/components/TiltCard";
@@ -69,18 +70,25 @@ export default function HomePage() {
         <HeroWave className="absolute inset-x-0 bottom-0 z-0 [mask-image:linear-gradient(to_top,#000_15%,transparent_80%)]" />
 
         <div className="relative mx-auto max-w-3xl text-center">
+          <div
+            className="reveal-lux mb-6 flex justify-center"
+            style={{ "--reveal-delay": "0ms" } as CSSProperties}
+          >
+            <SayItMark size={64} entrance title="" />
+          </div>
           <span
             className="reveal-lux inline-flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-xs font-medium text-body shadow-card"
-            style={{ "--reveal-delay": "0ms" } as CSSProperties}
+            style={{ "--reveal-delay": "90ms" } as CSSProperties}
           >
             <MicIcon size={14} className="text-accent" />
             Local push-to-talk dictation · Windows &amp; Linux
           </span>
           <h1
             className="reveal-lux mt-6 text-5xl font-semibold tracking-tight text-strong sm:text-6xl lg:text-7xl"
-            style={{ "--reveal-delay": "90ms" } as CSSProperties}
+            style={{ "--reveal-delay": "180ms" } as CSSProperties}
           >
-            {site.tagline}
+            Your voice. Your words.{" "}
+            <span className="text-spectrum">Typed anywhere.</span>
           </h1>
           <p
             className="reveal-lux mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted"

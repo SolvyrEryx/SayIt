@@ -3,9 +3,11 @@ import { Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { AmbientField } from "@/components/AmbientField";
 import { AnnouncementBar } from "@/components/AnnouncementBar";
+import { CardGlowCursor } from "@/components/CardGlowCursor";
 import { Footer } from "@/components/Footer";
 import { Navbar } from "@/components/Navbar";
 import { PageGlow } from "@/components/PageGlow";
+import { ScrollProgress } from "@/components/ScrollProgress";
 import { SkipLink } from "@/components/SkipLink";
 import { baseMetadata } from "@/lib/base-metadata";
 
@@ -35,6 +37,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="flex min-h-dvh flex-col bg-page text-body">
         <PageGlow />
         <AmbientField />
+        <ScrollProgress />
+        <CardGlowCursor />
         <SkipLink />
         <AnnouncementBar />
         <Navbar />

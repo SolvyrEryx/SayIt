@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Container } from "./Container";
 import { SayItLogo } from "./SayItLogo";
 import { site } from "@/lib/site";
@@ -20,6 +21,7 @@ const NAV_LINKS = [
  */
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     const update = () => setScrolled(window.scrollY > 8);
@@ -44,20 +46,30 @@ export function Navbar() {
           <SayItLogo size={28} href="/" ariaLabel="Say It home" />
           <nav aria-label="Main">
             <ul className="flex flex-wrap items-center gap-0.5 sm:gap-1">
-              {NAV_LINKS.map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className={
-                      link.emphasize
-                        ? "inline-block rounded-lg border border-accent bg-accent px-2 py-1.5 text-sm font-medium text-on-accent shadow-sm transition-[background-color,border-color,color,transform,box-shadow] duration-[var(--motion-fast)] ease-soft hover:-translate-y-px hover:bg-accent-hover hover:shadow-[var(--shadow-glow)] sm:px-3"
-                        : "inline-block rounded-md px-2 py-2 text-sm text-body transition-[background-color,color,transform] duration-[var(--motion-fast)] ease-soft hover:-translate-y-px hover:bg-subtle hover:text-strong sm:px-3"
-                    }
-                  >
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
+              {NAV_LINKS.map((link) => {
+                // Current route gets a quiet accent pill; transition keeps the
+                // handoff between pages smooth during client navigation.
+                const active = pathname === link.href || pathname === `${link.href}/`;
+                return (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      aria-current={active ? "page" : undefined}
+                      className={
+                        link.emphasize
+                          ? "inline-block rounded-lg border border-accent bg-accent px-2 py-1.5 text-sm font-medium text-on-accent shadow-sm transition-[background-color,border-color,color,transform,box-shadow] duration-[var(--motion-fast)] ease-soft hover:-translate-y-px hover:bg-accent-hover hover:shadow-[var(--shadow-glow)] sm:px-3"
+                          : `inline-block rounded-md px-2 py-2 text-sm transition-[background-color,color,transform] duration-[var(--motion-fast)] ease-soft hover:-translate-y-px sm:px-3 ${
+                              active
+                                ? "bg-accent-soft font-medium text-accent-text"
+                                : "text-body hover:bg-subtle hover:text-strong"
+                            }`
+                      }
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                );
+              })}
               <li>
                 <a
                   href={site.repositoryUrl}

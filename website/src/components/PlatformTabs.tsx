@@ -135,7 +135,7 @@ export function PlatformTabs({
           id={`${baseId}-panel-${tab.key}`}
           aria-labelledby={`${baseId}-tab-${tab.key}`}
           hidden={effective !== tab.key}
-          className="pt-8"
+          className={effective === tab.key ? "panel-in pt-8" : "pt-8"}
         >
           {tab.content}
         </div>
