@@ -53,8 +53,10 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y libegl1 libegl-dev libxkbcommon0 libxcb-xinerama0 libxcb-cursor0 libportaudio2
 
-    - name: Install Dependencies
-      run: uv sync --group dev
+    - name: Resolve and install dependencies
+      run: |
+        uv lock --upgrade-package sherpa-onnx-core
+        uv sync --group dev
         
     - name: Run Tests
       env:
@@ -91,8 +93,10 @@ jobs:
         restore-keys: |
           uv-${{ runner.os }}-
       
-    - name: Install Dependencies
-      run: uv sync --group dev
+    - name: Resolve and install dependencies
+      run: |
+        uv lock --upgrade-package sherpa-onnx-core
+        uv sync --group dev
         
     - name: Build with Briefcase
       run: |
