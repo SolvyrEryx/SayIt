@@ -34,3 +34,7 @@ artifacts/
 
 # personal documentation
 *private*.md
+# Build-time generated SayIt icon derivatives (canonical source is icons/sayit.svg)
+icons/sayit.ico
+icons/sayit-*.png
+icons/sayit.png

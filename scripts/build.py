@@ -39,6 +39,20 @@ def get_platform_target() -> tuple[str, str]:
         raise RuntimeError(f"Unsupported platform: {system}")
 
 
+def generate_icons(project_root: Path) -> None:
+    """Generate platform icon assets from the canonical SayIt SVG before packaging."""
+    generator = project_root / "scripts" / "generate_icons.py"
+    env = os.environ.copy()
+    env.setdefault("QT_QPA_PLATFORM", "offscreen")
+    print("\nGenerating SayIt application icons...")
+    subprocess.run(
+        [sys.executable, str(generator)],
+        cwd=project_root,
+        env=env,
+        check=True,
+    )
+
+
 def build():
     project_root = Path(__file__).parent.parent
     plat, fmt = get_platform_target()
@@ -54,6 +68,7 @@ def build():
     print("=" * 60)
 
     try:
+        generate_icons(project_root)
         print(f"\n[1/2] Creating application scaffold for {plat}/{fmt}...")
         subprocess.run(
             [sys.executable, "-m", "briefcase", "create", plat, fmt],

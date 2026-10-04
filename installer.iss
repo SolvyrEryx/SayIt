@@ -12,6 +12,7 @@
 #define MyAppURL "https://github.com/VptrCipher/SayIt"
 ; The Briefcase-built executable is named SayIt.exe (technical identifier).
 #define MyAppExeName "SayIt.exe"
+#define MyAppIcon "icons\\sayit.ico"
 
 [Setup]
 ; Unique application identifier - NEVER change this after first release.
@@ -37,6 +38,7 @@ SolidCompression=yes
 ; Windows version requirements
 MinVersion=10.0
 ; Installer appearance
+SetupIconFile={#MyAppIcon}
 WizardStyle=modern
 ; Privilege requirements - install for current user by default (no UAC prompt).
 ; App installs to: C:\Users\<User>\AppData\Local\Programs\SayIt
