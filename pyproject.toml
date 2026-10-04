@@ -15,7 +15,7 @@ dependencies = [
     "sherpa-onnx>=1.12.21",
     "litellm>=1.80.16",
     "pyperclip>=1.9.0",
-    "sherpa-onnx-core>=1.12.23",
+    "sherpa-onnx-core==1.12.21",
 ]
 
 
