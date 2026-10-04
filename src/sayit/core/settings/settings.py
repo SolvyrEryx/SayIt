@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
@@ -334,9 +335,10 @@ class Settings(BaseModel):
             json.dump(data, f, indent=2)
 
     def reset_to_defaults(self) -> None:
+        """Reset settings while preserving typed nested models."""
         default = Settings()
-        for key, value in default.model_dump().items():
-            setattr(self, key, value)
+        for key in default.model_fields:
+            setattr(self, key, deepcopy(getattr(default, key)))
 
     def get_active_enhancement(self) -> Optional["Enhancement"]:
         if not self.active_enhancement_id:
