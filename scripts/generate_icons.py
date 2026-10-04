@@ -20,9 +20,10 @@ def render_png(renderer: QSvgRenderer, size: int) -> bytes:
     image.fill(0)
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    if not renderer.render(painter):
-        painter.end()
-        raise RuntimeError(f"Failed to render {SOURCE} at {size}px")
+    # QSvgRenderer.render() is a void C++ method; PySide6 therefore returns
+    # None rather than a success boolean. Treating that return value as a
+    # boolean made every otherwise-valid render look like a failure.
+    renderer.render(painter)
     painter.end()
     buffer = QBuffer()
     if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
