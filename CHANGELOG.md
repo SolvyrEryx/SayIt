@@ -25,6 +25,9 @@ code and passing automated tests. Behavior that has not been validated end-to-en
 
 ## [Unreleased]
 
+- Release refresh: aligned the lockfile package version with SayIt 0.1.2 after the initial 0.1.2 artifact build.
+
+
 ### Local intelligence layer (Phase 8A–8H)
 A deterministic, local-only, explainable "intelligence" layer added on top of
 the existing ASR pipeline. Nothing here uses an LLM, the network, screenshots,
