@@ -60,7 +60,7 @@ def build():
     app_version = os.environ.get("APP_VERSION")
     if app_version and app_version.startswith("v"):
         app_version = app_version[1:]  # Strip leading 'v' from tag
-    if app_version and app_version != "0.1.0":
+    if app_version and app_version != "0.1.2":
         inject_version(project_root, app_version)
 
     print("=" * 60)
