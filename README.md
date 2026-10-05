@@ -83,7 +83,7 @@ flowchart LR
     D --> E[Transcript Intelligence]
     E --> F[Clipboard / Text Insertion]
     F --> G[Your active application]
-    subgraph E [Transcript Intelligence]
+   subgraph TI [Transcript Intelligence]
       E1[terminology retrieval] --> E2[correction]
       E2 --> E3[ranking]
       E3 --> E4[explicit personalization]
