@@ -50,9 +50,12 @@ jobs:
       - name: Build site
         working-directory: website
         env:
-          # Project sites are served from https://<owner>.github.io/<repo>/
-          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
-          NEXT_PUBLIC_SITE_ORIGIN: https://${{ github.repository_owner }}.github.io
+          # Served from a custom domain at the ROOT (https://sayit.ineffablebeast.in/),
+          # not a project sub-path. Base path must be empty so assets resolve at "/"
+          # (e.g. /_next/static/...). A non-empty base path would emit /SayIt/_next/...
+          # URLs that 404 on the custom domain and leave the page unstyled.
+          NEXT_PUBLIC_BASE_PATH: ""
+          NEXT_PUBLIC_SITE_ORIGIN: https://sayit.ineffablebeast.in
         run: npm run build
 
       - name: Fetch release manifest
