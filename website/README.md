@@ -13,8 +13,8 @@ Stages A–H are complete. Highlights:
   on `workflow_dispatch`, and whenever a release is **published**. It builds
   with `NEXT_PUBLIC_BASE_PATH=/<repo>` (GitHub Pages project-site sub-path),
   then embeds the latest published release's `release-manifest.json` asset at
-  the site root — if none exists, the site ships its honest "first release
-  not published" fallback instead of fabricated data. One-time setup: repo
+  the site root — if none exists, the site ships its honest "release
+  unavailable" fallback instead of fabricated data. One-time setup: repo
   **Settings → Pages → Source: GitHub Actions**
 - Next.js (static export) + TypeScript + Tailwind CSS 4 toolchain
 - Design token system in [`src/app/globals.css`](src/app/globals.css), mirroring
@@ -26,9 +26,9 @@ Stages A–H are complete. Highlights:
   table, privacy teaser
 - `/download`: download center consuming a static `/release-manifest.json`
   (schema in [`src/lib/release.ts`](src/lib/release.ts), example in
-  [`release-manifest.example.json`](release-manifest.example.json)). While no
-  release exists it shows an honest "first release hasn't been published yet"
-  state with working GitHub fallbacks; cards link to the installation guide
+  [`release-manifest.example.json`](release-manifest.example.json)). When release
+  data is unavailable it shows an honest fallback state with working GitHub
+  fallbacks; cards link to the installation guide
 - `/install`: platform-aware guides (Windows / Linux / Source) in accessible
   tabs that default to the detected platform and deep-link via URL hash.
   Verified-only requirements, exact commands (uv / python -m sayit /
@@ -65,9 +65,8 @@ Stages A–H are complete. Highlights:
   ([`src/lib/release.ts`](src/lib/release.ts)) — CI-side generation and
   site-side consumption cannot drift apart
 
-Outstanding: Stage G installer/release validation — requires cutting the real
-first release (tag → CI build → publish; the deploy workflow then fires and
-the download center lights up automatically).
+Release status: v0.1.2 is published. The release workflow generates the manifest and checksums,
+then the GitHub Pages deploy workflow refreshes the download center from that published release.
 
 ## Commands
 
