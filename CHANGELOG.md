@@ -1,11 +1,15 @@
-# Changelog\n\n## [0.1.2] - 2026-10-05\n\n### Custom hotkeys\n- Hardened custom hotkey runtime registration and replacement so a newly applied shortcut replaces the old listener cleanly.\n- Normalized Qt special-key names (including Page Up/Down, Print Screen, locks, Backspace, Return, and arrows) to the pynput key names used by the global listener.\n- Added regression coverage for special keys, character/function keys, settings persistence, and Qt-to-runtime key normalization.\n
+# Changelog\n\n## [0.1.2] - 2026-10-05
 
-All notable changes to this project are documented here. The project version in `pyproject.toml` is `0.1.2`. Version 0.1.2 is a reliability/bugfix release focused on custom hotkey robustness and persistence.
+### Linux release refresh
+- Fixed Linux AppImage startup by bundling and preloading the PortAudio runtime instead of relying on a distro-provided `libportaudio`.
+- Deferred Linux `pynput` keyboard initialization and audio backend loading so unavailable X/Wayland input/audio backends do not crash application startup.
+- Added a CI smoke test that launches the actual packaged AppImage before release publication.
+- Kept the validated 0.1.2 Linux artifact/checksum path for the refreshed release.
 
-This changelog describes work completed during a reliability, UX, and
-privacy-hardening effort. Items are listed only where they correspond to actual
-code and passing automated tests. Behavior that has not been validated end-to-end
-(for example, real ASR model-backed transcription) is noted as such in the README.
+### SayIt SI branding
+- Replaced the listening overlay's microphone treatment with a compact **SI** monogram + animated equalizer pill.
+- Switched the active listening accent to a neon orange (#FF6600 / KTM-style) brand treatment.
+- Updated the canonical app and web icons to the SI neon-orange mark.
 
 ## [0.1.1] - 2026-10-04
 
