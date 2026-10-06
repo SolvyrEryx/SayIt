@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 import signal
 import sys
 from datetime import datetime
@@ -988,6 +990,26 @@ def main():
     signal.signal(signal.SIGINT, lambda *args: QApplication.quit())
 
     settings = get_settings()
+
+    # CI-only smoke mode: exercise the packaged Python/Qt startup path without
+    # opening the setup wizard, touching audio hardware, or downloading a model.
+    # Audio capture remains lazy and is tested separately when a user records.
+    if os.environ.get("SAYIT_LINUX_SMOKE_TEST") == "1":
+        if sys.platform.startswith("linux"):
+            from . import _bundled_portaudio_path, _bundled_portaudio
+
+            if _bundled_portaudio_path is None or _bundled_portaudio is None:
+                raise RuntimeError(
+                    "Linux smoke test failed: bundled PortAudio runtime is unavailable"
+                )
+            if not _bundled_portaudio_path.is_file():
+                raise RuntimeError(
+                    f"Linux smoke test failed: missing PortAudio runtime at "
+                    f"{_bundled_portaudio_path}"
+                )
+        logger.info("Linux packaged launch smoke test passed")
+        return
+
     if not settings.first_run_complete:
         wizard = SetupWizard()
         if wizard.exec() != SetupWizard.Accepted:
