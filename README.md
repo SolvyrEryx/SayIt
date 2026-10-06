@@ -4,7 +4,7 @@
 
 **Local-first voice typing for your desktop.**
 
-**Authors:** Rahul J, Noah J, and Pranav H
+**Authors:** Rahul J, Pranav, and J Noah
 
 Hold a hotkey, speak, release — your words are transcribed on-device and
 inserted at your cursor in any application.
@@ -14,14 +14,14 @@ inserted at your cursor in any application.
 [![ASR: Parakeet TDT 0.6B v2](https://img.shields.io/badge/ASR-Parakeet%20TDT%200.6B%20v2-5a4fcf.svg)](#models)
 [![Local-first](https://img.shields.io/badge/privacy-local--first-2e7d32.svg)](#privacy)
 
-### [⬇ Download for Windows](https://github.com/VptrCipher/SayIt/releases/latest) · [⬇ Download for Linux](https://github.com/VptrCipher/SayIt/releases/latest) · [🌐 Website](https://vptrcipher.github.io/SayIt/) · [📦 Releases](https://github.com/VptrCipher/SayIt/releases)
+### [⬇ Download for Windows](https://github.com/VptrCipher/SayIt/releases/latest) · [⬇ Download for Linux](https://github.com/VptrCipher/SayIt/releases/latest) · [🌐 Website](https://sayit.ineffablebeast.in/) · [📦 Releases](https://github.com/VptrCipher/SayIt/releases)
 
 <img src="docs/assets/sayit-home-idle.png" alt="SayIt — ready to speak" width="420">
 
 </div>
 
 > **Release status:** `v0.1.2` has been **built and released**. The official
-> website is **https://vptrcipher.github.io/SayIt/**. See [Release status](#release-status)
+> website is **https://sayit.ineffablebeast.in/**. See [Release status](#release-status)
 > for details.
 
 ---
@@ -182,7 +182,7 @@ has been measured.
 
 The `v0.1.2` release is built and released. Download it from the
 [Releases page](https://github.com/VptrCipher/SayIt/releases/latest) or visit
-[https://vptrcipher.github.io/SayIt/](https://vptrcipher.github.io/SayIt/). The
+[https://sayit.ineffablebeast.in/](https://sayit.ineffablebeast.in/). The
 release artifacts are built by CI and named:
 
 - **Windows:** `SayIt-Setup-x64.exe` (Inno Setup installer). Unsigned; see
@@ -224,7 +224,7 @@ supported production backend.
 - ✅ Privacy defaults verified (cloud enhancement + history off by default).
 - ✅ Dependencies pinned and reproducible (`uv sync --frozen`).
 - ✅ Packaged application and live desktop usage have been tested.
-- ✅ SayIt has been launched at **https://vptrcipher.github.io/SayIt/**.
+- ✅ SayIt has been launched at **https://sayit.ineffablebeast.in/**.
 - ✅ Custom hotkeys persist across restarts and are re-registered immediately when changed.
 - ℹ️ The Windows installer is unsigned; Windows SmartScreen may show a
   "Windows protected your PC" notice on first run (choose *More info →
