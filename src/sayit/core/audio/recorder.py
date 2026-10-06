@@ -1,8 +1,42 @@
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional
 
 import numpy as np
-import sounddevice as sd
+
+if TYPE_CHECKING:
+    import sounddevice as sd
+
+
+class _LazySoundDevice:
+    """Resolve sounddevice only when an audio operation actually needs it."""
+
+    def __getattr__(self, name: str):
+        import sounddevice as real_sounddevice
+        return getattr(real_sounddevice, name)
+
+
+sd = _LazySoundDevice()
+
+
+class _LazySoundDevice:
+    """Lazy proxy that keeps sounddevice import out of desktop startup."""
+
+    def __init__(self):
+        self._module = None
+
+    def _load(self):
+        if self._module is None:
+            import sounddevice
+            self._module = sounddevice
+        return self._module
+
+    def __getattr__(self, name):
+        return getattr(self._load(), name)
+
+
+# Tests and the recorder can keep using recorder.sd.*, while the real module is
+# imported only when an audio operation actually needs it.
+sd = _LazySoundDevice()
 
 
 @dataclass
@@ -30,7 +64,7 @@ class AudioRecorder:
         self.on_audio_level = on_audio_level
         self.on_audio_spectrum = on_audio_spectrum
 
-        self._stream: Optional[sd.InputStream] = None
+        self._stream: Optional["sd.InputStream"] = None
         self._audio_buffer: List[np.ndarray] = []
         self._is_recording = False
         self._device_sample_rate: Optional[float] = None
@@ -52,7 +86,6 @@ class AudioRecorder:
         self._last_error: Optional[str] = None
 
         try:
-
             self._device_sample_rate = float(self.sample_rate)
 
             self._stream = sd.InputStream(
@@ -65,20 +98,23 @@ class AudioRecorder:
             self._is_recording = True
             return True
 
-        except sd.PortAudioError as e:
-            error_str = str(e).lower()
-            # Check for macOS permission-related errors
-            if "permission" in error_str or "not allowed" in error_str:
-                self._last_error = (
-                    "Microphone access denied. Please grant permission in "
-                    "System Settings > Privacy & Security > Microphone"
-                )
-            else:
-                self._last_error = f"Audio device error: {e}"
-            self._is_recording = False
-            return False
         except Exception as e:
-            self._last_error = f"Failed to start recording: {e}"
+            try:
+                is_portaudio_error = isinstance(e, sd.PortAudioError)
+            except Exception:
+                is_portaudio_error = False
+
+            if is_portaudio_error:
+                error_str = str(e).lower()
+                if "permission" in error_str or "not allowed" in error_str:
+                    self._last_error = (
+                        "Microphone access denied. Please grant permission in "
+                        "System Settings > Privacy & Security > Microphone"
+                    )
+                else:
+                    self._last_error = f"Audio device error: {e}"
+            else:
+                self._last_error = f"Failed to start recording: {e}"
             self._is_recording = False
             return False
 
