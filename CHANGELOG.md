@@ -1,4 +1,6 @@
-# Changelog\n\n## [0.1.3] - 2026-10-13
+# Changelog
+
+## [0.1.3] - 2026-10-13
 
 ### Hindi and Kannada speech recognition
 - Added Hindi and Kannada IndicConformer INT8 ASR models with language-aware routing and model-selection synchronization.
