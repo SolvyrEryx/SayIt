@@ -1,4 +1,18 @@
-# Changelog\n\n## [0.1.2] - 2026-10-05
+# Changelog\n\n## [0.1.3] - 2026-10-13
+
+### Hindi and Kannada speech recognition
+- Added Hindi and Kannada IndicConformer INT8 ASR models with language-aware routing and model-selection synchronization.
+- Reconciled saved language/model mismatches at startup and prevented Hindi/Kannada dictation from silently falling back to an English-only recognizer.
+- Added multi-file model downloads with pinned source revisions, SHA-256 verification, and archive-path safety checks.
+- Added script-aware text processing and regression coverage for language routing, setup, and downloading.
+
+### Local enterprise policy foundations
+- Added local policy-bundle signature/integrity verification and a tamper-evident audit-log foundation. This is a local foundation, not a hosted SSO or per-seat enforcement service.
+
+### Packaging and compatibility
+- Pinned compatible runtime versions for reproducible packaging and retained the existing SI/neon-orange Listening UI.
+
+## [0.1.2] - 2026-10-05
 
 ### Linux release refresh
 - Fixed Linux AppImage startup by bundling and preloading the PortAudio runtime instead of relying on a distro-provided `libportaudio`.
