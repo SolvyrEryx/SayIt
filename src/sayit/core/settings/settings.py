@@ -31,6 +31,11 @@ FALLBACK_MODEL_ID = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
 WHISPER_CPU_THREAD_CHOICES = (4, 6, 8)
 DEFAULT_WHISPER_CPU_THREADS = 4
 
+# Supported dictation languages (initial Bharat scope). English preserves all
+# existing behaviour; Hindi/Kannada route to IndicConformer CTC models.
+SUPPORTED_LANGUAGES = ("en", "hi", "kn")
+DEFAULT_LANGUAGE = "en"
+
 
 def _get_default_enhancements() -> List[dict]:
     from ..transcript_processor.llm_processor import get_default_enhancements
@@ -113,6 +118,13 @@ class Settings(BaseModel):
 
     hotkey: HotkeyConfig = Field(default_factory=HotkeyConfig)
     model_id: str = DEFAULT_MODEL_ID
+
+    # Dictation language (Phase: Bharat). Decoupled from the concrete model
+    # selector: the user picks a language ("en", "hi", "kn") and the app routes
+    # to a compatible model. Persists across restarts. English is the default so
+    # existing installs behave exactly as before. An unknown/invalid value
+    # falls back to "en".
+    dictation_language: str = "en"
 
     # Whisper Small opt-in CPU thread count (Advanced / Performance). ONLY the
     # Whisper Small Higher-Accuracy path reads this; Parakeet (the production
@@ -212,6 +224,15 @@ class Settings(BaseModel):
             raise ValueError("model_id must be a non-empty string")
         return v
 
+    @field_validator("dictation_language")
+    @classmethod
+    def dictation_language_supported(cls, v):
+        # Safe-by-default: any unknown/invalid language falls back to English so
+        # old or hand-edited settings never break dictation.
+        if isinstance(v, str) and v in SUPPORTED_LANGUAGES:
+            return v
+        return DEFAULT_LANGUAGE
+
     @field_validator("whisper_small_cpu_threads")
     @classmethod
     def whisper_threads_in_allowed_set(cls, v):
@@ -282,6 +303,11 @@ class Settings(BaseModel):
                 # so an invalid persisted value always falls back to 4.
                 if settings.whisper_small_cpu_threads not in WHISPER_CPU_THREAD_CHOICES:
                     settings.whisper_small_cpu_threads = DEFAULT_WHISPER_CPU_THREADS
+
+                # Same safeguard for dictation_language (model_construct bypasses
+                # validators): an invalid persisted language falls back to en.
+                if settings.dictation_language not in SUPPORTED_LANGUAGES:
+                    settings.dictation_language = DEFAULT_LANGUAGE
 
                 if not settings.enhancements:
                     settings.enhancements = _get_default_enhancements()

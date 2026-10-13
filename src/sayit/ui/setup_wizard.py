@@ -13,10 +13,64 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
-from ..core.asr.models.registry import get_all_models_with_status, is_model_downloaded
+from ..core.asr.models.registry import (
+    get_all_models_with_status,
+    get_models_for_language,
+    is_model_downloaded,
+)
 from ..core.audio import AudioRecorder, MicrophoneTestController, MicTestResult
 from ..core.settings import HotkeyConfig, Settings, get_settings
 from .download_dialog import ModelDownloadThread
+
+# User-facing language labels for the onboarding step. Keep in sync with
+# settings.SUPPORTED_LANGUAGES.
+LANGUAGE_CHOICES = [
+    ("English", "en"),
+    ("हिन्दी (Hindi)", "hi"),
+    ("ಕನ್ನಡ (Kannada)", "kn"),
+]
+
+
+class LanguagePage(QWizardPage):
+    """Choose the dictation language (English / Hindi / Kannada).
+
+    The selection drives which speech model the next step offers and is
+    persisted to ``dictation_language``. English is pre-selected so returning
+    behaviour is unchanged for English users.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setTitle("Dictation Language")
+        self.setSubTitle("Choose the language you want to dictate in.")
+
+        layout = QVBoxLayout(self)
+
+        label = QLabel("Language:")
+        layout.addWidget(label)
+
+        self._language_combo = QComboBox()
+        self._language_combo.setAccessibleName("Dictation language")
+        label.setBuddy(self._language_combo)
+        for display, code in LANGUAGE_CHOICES:
+            self._language_combo.addItem(display, code)
+        layout.addWidget(self._language_combo)
+
+        info = QLabel(
+            "English uses the on-device Parakeet model. Hindi and Kannada use "
+            "the on-device AI4Bharat IndicConformer models and are written in "
+            "their native scripts (Devanagari for Hindi, Kannada script for "
+            "Kannada). You can change the language later in Settings. The right "
+            "model for your language is downloaded in the next step."
+        )
+        info.setStyleSheet("color: gray; font-size: 11px;")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        layout.addStretch()
+
+    def get_selected_language(self) -> str:
+        return self._language_combo.currentData() or "en"
 
 
 class WelcomePage(QWizardPage):
@@ -176,6 +230,10 @@ class ModelSelectionPage(QWizardPage):
         self.setTitle("Speech Model")
         self.setSubTitle("A local model is needed to transcribe your speech.")
 
+        # Active language filter (set by the wizard from the Language page).
+        # None means "show all models" (used by standalone tests).
+        self._language: Optional[str] = None
+
         layout = QVBoxLayout(self)
 
         model_label = QLabel("Model:")
@@ -228,9 +286,28 @@ class ModelSelectionPage(QWizardPage):
 
     def _refresh_model_list(self) -> None:
         self._model_combo.clear()
-        for model, status in get_all_models_with_status():
+        if self._language:
+            models = [
+                (m, "downloaded" if is_model_downloaded(m.id) else "not_downloaded")
+                for m in get_models_for_language(self._language)
+            ]
+        else:
+            models = get_all_models_with_status()
+        for model, status in models:
             indicator = "(installed)" if status == "downloaded" else "(not installed)"
             self._model_combo.addItem(f"{model.name}  {indicator}", model.id)
+
+    def set_language(self, language: str) -> None:
+        """Filter the offered models to those compatible with ``language``.
+
+        This enforces language-aware routing at the UI level: when Hindi or
+        Kannada is selected, only the matching IndicConformer model is offered,
+        so the user can never pick the English Parakeet model for Hindi/Kannada.
+        """
+        self._language = language
+        self._refresh_model_list()
+        self._update_status()
+        self.completeChanged.emit()
 
     def _on_model_changed(self, index: int) -> None:
         self._update_status()
@@ -378,7 +455,9 @@ class TryItPage(QWizardPage):
     main app, not here, so this page cannot show a fake success.
     """
 
-    def __init__(self, model_page: ModelSelectionPage, hotkey_page: HotkeyPage, parent=None):
+    def __init__(
+        self, model_page: ModelSelectionPage, hotkey_page: HotkeyPage, parent=None
+    ):
         super().__init__(parent)
         self._model_page = model_page
         self._hotkey_page = hotkey_page
@@ -469,6 +548,9 @@ class SetupWizard(QWizard):
 
         self.addPage(WelcomePage())
 
+        self._language_page = LanguagePage()
+        self.addPage(self._language_page)
+
         self._mic_page = MicrophonePage()
         self.addPage(self._mic_page)
 
@@ -481,11 +563,22 @@ class SetupWizard(QWizard):
         self.addPage(TryItPage(self._model_page, self._hotkey_page))
         self.addPage(CompletePage(self._model_page))
 
+        # Seed the model page with the current (default) language, then keep it
+        # in sync whenever the user leaves the Language page.
+        self._model_page.set_language(self._language_page.get_selected_language())
+        self.currentIdChanged.connect(self._on_page_changed)
+
+    def _on_page_changed(self, _page_id: int) -> None:
+        # Whenever we navigate, make sure the model page reflects the chosen
+        # language so Hindi/Kannada never offer the English model.
+        self._model_page.set_language(self._language_page.get_selected_language())
+
     def accept(self) -> None:
         # Release any in-progress mic test before closing.
         self._mic_page.cleanup()
 
         self._settings.input_device = self._mic_page.get_selected_device()
+        self._settings.dictation_language = self._language_page.get_selected_language()
         selected_model = self._model_page.get_selected_model()
         if selected_model:
             self._settings.model_id = selected_model

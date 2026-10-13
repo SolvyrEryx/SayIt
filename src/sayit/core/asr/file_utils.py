@@ -5,9 +5,7 @@ import platformdirs
 
 
 def get_models_dir() -> str:
-    return os.path.join(
-        platformdirs.user_data_dir("SayIt", appauthor=False), "models"
-    )
+    return os.path.join(platformdirs.user_data_dir("SayIt", appauthor=False), "models")
 
 
 def find_file_by_suffix(directory: str, *suffixes: str) -> Optional[str]:
@@ -67,6 +65,17 @@ def is_valid_transducer_model(model_path: str) -> bool:
     return has_encoder and has_decoder and has_joiner and has_tokens
 
 
+def is_valid_nemo_ctc_model(model_path: str) -> bool:
+    has_model = (
+        find_file_exact(
+            model_path, ["model.int8.onnx", "model.onnx", "model.fp16.onnx"]
+        )
+        is not None
+    )
+    has_tokens = os.path.exists(os.path.join(model_path, "tokens.txt"))
+    return has_model and has_tokens
+
+
 def is_valid_model_dir(model_path: str) -> bool:
     has_tokens = has_file_with_suffix(model_path, "-tokens.txt", "tokens.txt")
     has_encoder = has_file_with_suffix(
@@ -78,4 +87,13 @@ def is_valid_model_dir(model_path: str) -> bool:
         "encoder.int8.onnx",
         "encoder.fp16.onnx",
     )
-    return has_tokens and has_encoder
+    # NeMo CTC models (IndicConformer) have a single model.*.onnx instead of a
+    # separate encoder graph. Treat the presence of model.*.onnx + tokens as a
+    # valid model dir too.
+    has_ctc_model = (
+        find_file_exact(
+            model_path, ["model.int8.onnx", "model.onnx", "model.fp16.onnx"]
+        )
+        is not None
+    )
+    return has_tokens and (has_encoder or has_ctc_model)

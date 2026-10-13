@@ -1,7 +1,7 @@
 import json
 import os
-from dataclasses import dataclass
-from typing import List, Literal
+from dataclasses import dataclass, field
+from typing import Dict, List, Literal, Optional
 
 from ..file_utils import get_models_dir, is_valid_model_dir
 
@@ -11,14 +11,48 @@ GITHUB_RELEASE_BASE = (
 
 
 @dataclass
+class ModelFile:
+    """One remote file to fetch for a multi-file model.
+
+    ``url``  absolute HTTPS source.
+    ``dest`` filename to write inside the model directory.
+    ``sha256`` optional authentic published hash for integrity verification.
+    """
+
+    url: str
+    dest: str
+    sha256: Optional[str] = None
+
+
+@dataclass
 class ModelInfo:
     id: str
     name: str
     type: str
+    # Additive, optional metadata (defaults preserve all existing behaviour).
+    language: str = "en"  # ISO code: "en", "hi", "kn"
+    source: str = ""  # provenance / upstream repo
+    license: str = ""  # license of the source weights
+    # Multi-file download spec. When non-empty, the downloader fetches each
+    # ``ModelFile`` individually (used by HF-hosted IndicConformer models that
+    # share a root tokens.txt). When empty, the legacy tar.bz2 archive path is
+    # used (unchanged for all existing English/Whisper models).
+    files: List[ModelFile] = field(default_factory=list)
 
     @property
     def url(self) -> str:
         return f"{GITHUB_RELEASE_BASE}/{self.id}.tar.bz2"
+
+    @property
+    def is_multi_file(self) -> bool:
+        return bool(self.files)
+
+
+def _parse_model(item: dict) -> ModelInfo:
+    data = dict(item)
+    raw_files = data.pop("files", None) or []
+    files = [ModelFile(**f) for f in raw_files]
+    return ModelInfo(files=files, **data)
 
 
 def load_models() -> List[ModelInfo]:
@@ -28,7 +62,7 @@ def load_models() -> List[ModelInfo]:
 
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            return [ModelInfo(**item) for item in data]
+            return [_parse_model(item) for item in data]
     except Exception as e:
         print(f"Error loading models.json: {e}")
         return []
@@ -45,6 +79,21 @@ def get_model_by_id(model_id: str) -> ModelInfo | None:
         if model.id == model_id:
             return model
     return None
+
+
+def get_models_for_language(language: str) -> List[ModelInfo]:
+    """Return models whose declared language matches ``language``."""
+    return [m for m in AVAILABLE_MODELS if m.language == language]
+
+
+def get_available_languages() -> List[str]:
+    """Distinct languages that have at least one registered model, en first."""
+    seen: Dict[str, None] = {}
+    for m in AVAILABLE_MODELS:
+        seen.setdefault(m.language, None)
+    langs = list(seen.keys())
+    langs.sort(key=lambda c: (c != "en", c))
+    return langs
 
 
 def is_model_downloaded(model_id: str) -> bool:

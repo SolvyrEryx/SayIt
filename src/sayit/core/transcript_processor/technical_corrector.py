@@ -69,24 +69,73 @@ def _build_alias_table() -> List[Tuple[str, str, str, str]]:
 _ALIAS_TABLE = _build_alias_table()
 
 _NUMBER_WORDS = {
-    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-    "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
-    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
-    "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
-    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+    "sixty": 60,
+    "seventy": 70,
+    "eighty": 80,
+    "ninety": 90,
 }
 _ORDINAL_WORDS = {
-    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
-    "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
-    "eleventh": 11, "twelfth": 12, "thirteenth": 13, "fourteenth": 14,
-    "fifteenth": 15, "sixteenth": 16, "seventeenth": 17, "eighteenth": 18,
-    "nineteenth": 19, "twentieth": 20, "thirtieth": 30, "thirty first": 31,
+    "first": 1,
+    "second": 2,
+    "third": 3,
+    "fourth": 4,
+    "fifth": 5,
+    "sixth": 6,
+    "seventh": 7,
+    "eighth": 8,
+    "ninth": 9,
+    "tenth": 10,
+    "eleventh": 11,
+    "twelfth": 12,
+    "thirteenth": 13,
+    "fourteenth": 14,
+    "fifteenth": 15,
+    "sixteenth": 16,
+    "seventeenth": 17,
+    "eighteenth": 18,
+    "nineteenth": 19,
+    "twentieth": 20,
+    "thirtieth": 30,
+    "thirty first": 31,
     "thirty-first": 31,
 }
 _MONTHS = {
-    "january", "february", "march", "april", "may", "june", "july",
-    "august", "september", "october", "november", "december",
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
 }
 
 
@@ -147,6 +196,17 @@ class TechnicalCorrector:
             result.text = text
             return result
 
+        # Script-safe abstention: the technical/structured/number rules are all
+        # English/Latin-oriented. If the transcript is predominantly non-Latin
+        # (Devanagari/Hindi, Kannada, or other Indic scripts), leave it exactly
+        # as decoded so native-script output is never corrupted. English prose
+        # is unaffected (ratio ~0).
+        from .script_utils import is_predominantly_non_latin
+
+        if is_predominantly_non_latin(text):
+            result.text = text
+            return result
+
         # 1) Whitespace normalization (collapse runs of spaces/tabs; keep
         #    newlines). Does not touch punctuation.
         new = self._normalize_whitespace(result.text)
@@ -184,8 +244,9 @@ class TechnicalCorrector:
                 matched = m.group(0)
                 if matched != canon:  # only record a real change
                     changes.append(
-                        Change(category=cat, original=matched, replacement=canon,
-                               rule=r)
+                        Change(
+                            category=cat, original=matched, replacement=canon, rule=r
+                        )
                     )
                 return canon
 
@@ -214,8 +275,12 @@ class TechnicalCorrector:
         ):
             text = text[:cstart] + replacement + text[cend:]
             changes.append(
-                Change(category="structured", original=original,
-                       replacement=replacement, rule=rule)
+                Change(
+                    category="structured",
+                    original=original,
+                    replacement=replacement,
+                    rule=rule,
+                )
             )
         return text
 
@@ -281,9 +346,7 @@ class TechnicalCorrector:
             pattern = r"\b" + re.escape(original) + r"\b"
             if re.search(pattern, text, flags=re.IGNORECASE):
                 text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-                changes.append(
-                    Change("user", original, replacement, "user_vocabulary")
-                )
+                changes.append(Change("user", original, replacement, "user_vocabulary"))
         return text
 
 

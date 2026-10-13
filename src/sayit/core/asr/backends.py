@@ -11,6 +11,7 @@ from .file_utils import (
     find_file_by_suffix,
     find_file_exact,
     get_models_dir,
+    is_valid_nemo_ctc_model,
     is_valid_transducer_model,
     is_valid_whisper_model,
 )
@@ -93,6 +94,11 @@ class SherpaOnnxBackend:
                 self._load_whisper_model(
                     sherpa_onnx, full_model_path, num_threads=whisper_num_threads
                 )
+            elif model_type == "nemo_ctc":
+                # NeMo CTC models (e.g. AI4Bharat IndicConformer for Hindi/
+                # Kannada). Loaded via the existing sherpa-onnx runtime using
+                # OfflineRecognizer.from_nemo_ctc — no new inference dependency.
+                self._load_nemo_ctc_model(sherpa_onnx, full_model_path)
             else:
                 self._load_transducer_model(sherpa_onnx, full_model_path)
         except Exception as e:
@@ -130,6 +136,40 @@ class SherpaOnnxBackend:
             decoder=decoder,
             tokens=tokens,
             num_threads=num_threads,
+            provider="cpu",
+            debug=False,
+            decoding_method="greedy_search",
+        )
+
+    def _load_nemo_ctc_model(self, sherpa_onnx, model_path: str) -> None:
+        """Load a NeMo CTC model (AI4Bharat IndicConformer for hi/kn).
+
+        These exports ship a single ``model.int8.onnx`` (or ``model.onnx``) plus
+        a ``tokens.txt`` and are decoded by sherpa-onnx's offline CTC recognizer.
+        No new runtime is introduced; this reuses the pinned sherpa-onnx 1.13.8
+        that already powers the English Parakeet path.
+        """
+        model = find_file_exact(
+            model_path, ["model.int8.onnx", "model.onnx", "model.fp16.onnx"]
+        )
+        tokens = find_file_exact(model_path, ["tokens.txt"])
+
+        if not model or not tokens:
+            missing = []
+            if not model:
+                missing.append("model (model.int8.onnx)")
+            if not tokens:
+                missing.append("tokens (tokens.txt)")
+            raise RuntimeError(
+                f"Missing NeMo CTC model files in {model_path}: {', '.join(missing)}"
+            )
+
+        logger.info(f"Loading NeMo CTC model: model={model}, tokens={tokens}")
+
+        self._recognizer = sherpa_onnx.OfflineRecognizer.from_nemo_ctc(
+            model=model,
+            tokens=tokens,
+            num_threads=4,
             provider="cpu",
             debug=False,
             decoding_method="greedy_search",
@@ -244,5 +284,7 @@ class SherpaOnnxBackend:
 
         if model_type == "whisper":
             return is_valid_whisper_model(full_model_path)
+        elif model_type == "nemo_ctc":
+            return is_valid_nemo_ctc_model(full_model_path)
         else:
             return is_valid_transducer_model(full_model_path)

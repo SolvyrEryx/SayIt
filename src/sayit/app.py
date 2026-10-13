@@ -1,10 +1,10 @@
 import os
-from pathlib import Path
 import signal
 import sys
 from datetime import datetime
 from enum import Enum, auto
 from functools import partial
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QObject, QTimer
@@ -17,22 +17,22 @@ from .core.asr import (
     TranscriptionEngine,
     TranscriptionWorkerThread,
 )
-from .core.asr.pipeline_timing import PipelineTiming
 from .core.asr.intelligence_pipeline import IntelligencePipeline
+from .core.asr.pipeline_timing import PipelineTiming
 from .core.audio import AudioRecorder
 from .core.context import ContextEngine
 from .core.input import HotkeyListener
 from .core.intelligence import IntelligenceOrchestrator, OrchestratorConfig
-from .core.safezones import is_protected
-from .core.snippets import snippets_from_any
-from .core.voice_commands import OutputBuffer
 from .core.output import TextOutputController
+from .core.safezones import is_protected
 from .core.settings import (
     TranscriptionRecord,
     add_history_record,
     get_settings,
 )
+from .core.snippets import snippets_from_any
 from .core.transcript_processor import LLMProcessor
+from .core.voice_commands import OutputBuffer
 from .ui.download_dialog import DownloadDialog
 from .ui.main_window import SettingsWindow
 from .ui.recording_toast import RecordingToast
@@ -97,6 +97,11 @@ class TranscribeApp(QObject):
             on_audio_level=self._capture_audio_level,
             on_audio_spectrum=self._capture_audio_spectrum,
         )
+        # Enforce language<->model consistency BEFORE the engine is created so a
+        # Hindi/Kannada dictation language can never start on the English-only
+        # Parakeet model (and vice versa). This closes the live-dictation
+        # desync where model_id and dictation_language disagreed.
+        self._reconcile_language_and_model()
         self._transcriber = TranscriptionEngine(
             model_name=self._settings.model_id,
             on_state_change=self._on_engine_state_change,
@@ -251,7 +256,9 @@ class TranscribeApp(QObject):
                 self._post_asr_pipeline = IntelligencePipeline(
                     threshold=getattr(self._settings, "intelligence_threshold", 0.90),
                     user_vocabulary=self._settings.custom_vocabulary,
-                    domain_aware=getattr(self._settings, "intelligence_domain_aware", False),
+                    domain_aware=getattr(
+                        self._settings, "intelligence_domain_aware", False
+                    ),
                     enabled_domains=getattr(self._settings, "enabled_domains", None),
                     disabled_domains=getattr(self._settings, "disabled_domains", None),
                 )
@@ -292,6 +299,7 @@ class TranscribeApp(QObject):
             return
         try:
             from .core.asr import speech_mode as SM
+
             setter(SM.status_line(self._settings.model_id))
         except Exception as e:
             logger.debug(f"Home speech-mode update skipped: {e}")
@@ -376,9 +384,7 @@ class TranscribeApp(QObject):
         # Only start recording from IDLE/ERROR. Never start while already
         # recording, transcribing, or shutting down.
         if self._state not in (AppState.IDLE, AppState.ERROR, AppState.CANCELLED):
-            logger.debug(
-                f"Ignoring start_recording in state {self._state.name}"
-            )
+            logger.debug(f"Ignoring start_recording in state {self._state.name}")
             return
 
         # Phase 8E Safe Zones: GATE before any audio is captured. If the current
@@ -399,9 +405,7 @@ class TranscribeApp(QObject):
                 logger.info(
                     f"Recording blocked by Safe Zone (app '{sz.matched_entry}')"
                 )
-                self._set_state(
-                    AppState.IDLE, "SayIt paused — protected application"
-                )
+                self._set_state(AppState.IDLE, "SayIt paused — protected application")
                 self._update_home_protected(sz)
                 return
 
@@ -630,9 +634,7 @@ class TranscribeApp(QObject):
             # Transcript never reached the clipboard. It is still held in memory
             # (and in history if the user enabled it).
             where = "history" if self._settings.history_enabled else "the app"
-            logger.error(
-                "Text insertion failed: could not copy to clipboard."
-            )
+            logger.error("Text insertion failed: could not copy to clipboard.")
             self._set_state(
                 AppState.ERROR,
                 f"Could not insert text. It's kept in {where}.",
@@ -765,9 +767,7 @@ class TranscribeApp(QObject):
 
     def _on_settings_changed(self) -> None:
         old_model = self._transcriber.model_name
-        old_whisper_threads = getattr(
-            self._transcriber, "_whisper_num_threads", 4
-        )
+        old_whisper_threads = getattr(self._transcriber, "_whisper_num_threads", 4)
 
         self._settings = get_settings()
 
@@ -779,9 +779,7 @@ class TranscribeApp(QObject):
         self._context_engine._settings = self._settings
 
         # Phase 8H: rebuild the orchestrator feature-config from new settings.
-        self._orchestrator = IntelligenceOrchestrator(
-            self._build_orchestrator_config()
-        )
+        self._orchestrator = IntelligenceOrchestrator(self._build_orchestrator_config())
         # Phase 9K: drop the cached experimental pipeline so a flag/threshold
         # change (including disabling = rollback) takes effect on the next job.
         self._post_asr_pipeline = None
@@ -896,7 +894,8 @@ class TranscribeApp(QObject):
         self._load_user_initiated = user_initiated
 
         self._model_loader_thread = ModelLoaderThread(
-            model_name=model_name, parent=self,
+            model_name=model_name,
+            parent=self,
             whisper_num_threads=self._settings.whisper_small_cpu_threads,
         )
         self._model_loader_thread.state_changed.connect(self._on_engine_state_change)
@@ -913,27 +912,44 @@ class TranscribeApp(QObject):
             logger.error(f"Model loading failed: {message}")
 
             # Safe startup fallback: if a NON-user-initiated (startup/default)
-            # load failed, the failed model is not already the fallback, and we
-            # have not already fallen back, try the known-compatible model once.
-            # Explicit user selections are never silently replaced — they show
-            # the error below instead.
+            # load failed, try a known-compatible model once. The fallback is
+            # LANGUAGE-AWARE: a Hindi/Kannada selection never silently falls
+            # back to the English-only Parakeet model. If no same-language
+            # fallback exists, we surface the error instead of switching
+            # languages. Explicit user selections are never silently replaced.
+            from .core.asr.language_routing import resolve_fallback_model
             from .core.settings.settings import FALLBACK_MODEL_ID
 
-            can_fallback = (
-                not self._load_user_initiated
-                and not self._fallback_attempted
-                and self._loading_model_id != FALLBACK_MODEL_ID
-            )
-            if can_fallback:
+            fallback_id = None
+            if not self._load_user_initiated and not self._fallback_attempted:
+                fallback_id = resolve_fallback_model(
+                    language=self._settings.dictation_language,
+                    failed_model_id=self._loading_model_id or "",
+                    english_fallback_id=FALLBACK_MODEL_ID,
+                )
+            if fallback_id is not None:
                 self._fallback_attempted = True
                 logger.warning(
-                    f"Default model '{self._loading_model_id}' failed to load "
-                    f"({message}); falling back to '{FALLBACK_MODEL_ID}'"
+                    f"Model '{self._loading_model_id}' failed to load "
+                    f"({message}); falling back to language-compatible "
+                    f"'{fallback_id}' for language "
+                    f"'{self._settings.dictation_language}'"
                 )
                 if self._settings_window is not None:
                     self._settings_window.set_loading(True)
-                self._start_model_loading(FALLBACK_MODEL_ID, user_initiated=False)
+                self._start_model_loading(fallback_id, user_initiated=False)
                 return
+            elif (
+                not self._load_user_initiated
+                and not self._fallback_attempted
+                and self._settings.dictation_language != "en"
+            ):
+                # No same-language fallback: do NOT cross to English. Report it.
+                logger.error(
+                    f"No {self._settings.dictation_language}-compatible fallback "
+                    f"model available after '{self._loading_model_id}' failed; "
+                    f"refusing to switch languages."
+                )
 
         if self._settings_window is not None:
             self._settings_window.set_loading(False)
@@ -972,6 +988,58 @@ class TranscribeApp(QObject):
         logger.info("Starting deferred transcription model loading...")
         self._start_model_loading(self._settings.model_id)
 
+    def _reconcile_language_and_model(self) -> None:
+        """Ensure the configured model matches the dictation language.
+
+        Startup safety for live dictation: if ``dictation_language`` and
+        ``model_id`` disagree (e.g. Hindi selected but the English Parakeet
+        model is persisted), route to a language-compatible model so speech is
+        never transcribed with the wrong-language recognizer. If the language
+        is unknown/missing, derive it from the current model so existing
+        single-language (English) installs are unchanged. The chosen model may
+        be one that still needs downloading; that is surfaced normally rather
+        than silently transcribing with an incompatible model.
+        """
+        from .core.asr.language_routing import (
+            get_model_language,
+            is_compatible,
+            resolve_model_for_language,
+        )
+
+        lang = getattr(self._settings, "dictation_language", None) or "en"
+        model_id = self._settings.model_id
+
+        # Backfill the language from the model when the setting is absent, so a
+        # correctly-configured English install stays English and consistent.
+        model_lang = get_model_language(model_id)
+        if model_lang is not None and model_lang == lang:
+            return  # already consistent; no change
+
+        if (
+            model_lang is not None
+            and lang == "en"
+            and not getattr(self._settings, "_dictation_language_explicit", False)
+        ):
+            # Unknown/defaulted language but a known model: adopt the model's
+            # language so we don't force-switch a working install.
+            if self._settings.dictation_language != model_lang:
+                self._settings.dictation_language = model_lang
+                self._settings.save()
+            return
+
+        if is_compatible(lang, model_id):
+            return
+
+        route = resolve_model_for_language(lang, model_id)
+        if route.model_id and route.model_id != model_id:
+            logger.warning(
+                f"Dictation language '{lang}' is not served by model "
+                f"'{model_id}'; routing to compatible model "
+                f"'{route.model_id}' (installed={route.installed})."
+            )
+            self._settings.model_id = route.model_id
+            self._settings.save()
+
 
 def main():
     app = QApplication(sys.argv)
@@ -996,7 +1064,7 @@ def main():
     # Audio capture remains lazy and is tested separately when a user records.
     if os.environ.get("SAYIT_LINUX_SMOKE_TEST") == "1":
         if sys.platform.startswith("linux"):
-            from . import _bundled_portaudio_path, _bundled_portaudio
+            from . import _bundled_portaudio, _bundled_portaudio_path
 
             if _bundled_portaudio_path is None or _bundled_portaudio is None:
                 raise RuntimeError(

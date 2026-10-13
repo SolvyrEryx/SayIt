@@ -171,7 +171,7 @@ class ConfigurationTab(QWidget):
         group_layout = QVBoxLayout(group)
 
         self._technical_correction_cb = QCheckBox(
-            "Normalize common technical terms (e.g. \"git hub\" \u2192 GitHub)"
+            'Normalize common technical terms (e.g. "git hub" \u2192 GitHub)'
         )
         self._technical_correction_cb.setToolTip(
             "Deterministic, local normalization of registered developer terms "
@@ -188,12 +188,10 @@ class ConfigurationTab(QWidget):
         )
         self._structured_formatting_cb.setToolTip(
             "Conservative local formatting of clearly structured values, e.g. "
-            "\"three point two\" \u2192 3.2, \"ninety five percent\" \u2192 95%. "
+            '"three point two" \u2192 3.2, "ninety five percent" \u2192 95%. '
             "Ordinary prose is left unchanged."
         )
-        self._structured_formatting_cb.setAccessibleName(
-            "Format structured values"
-        )
+        self._structured_formatting_cb.setAccessibleName("Format structured values")
         group_layout.addWidget(self._structured_formatting_cb)
 
         note = QLabel(
@@ -274,7 +272,6 @@ class ConfigurationTab(QWidget):
                 "Automatic: the profile follows the active application."
             )
 
-
     def _create_intelligence_section(self) -> QWidget:
         """Phase 8B-8G feature toggles (local intelligence layer)."""
         widget = QWidget()
@@ -327,8 +324,9 @@ class ConfigurationTab(QWidget):
         (Whisper Small, opt-in). Maps to settings.model_id via the speech_mode
         module; NOT coupled to the experimental intelligence flag. Reuses the
         existing model download infrastructure for the optional model."""
+        from PySide6.QtWidgets import QButtonGroup, QRadioButton
+
         from ...core.asr import speech_mode as SM
-        from PySide6.QtWidgets import QRadioButton, QButtonGroup
 
         self._SM = SM
         widget = QWidget()
@@ -361,7 +359,9 @@ class ConfigurationTab(QWidget):
                 dl = QPushButton("Download")
                 dl.setAccessibleName(f"Download {m.label} model")
                 dl.setProperty("mode", m.mode)
-                dl.clicked.connect(lambda _=False, mm=m.mode: self._on_download_mode(mm))
+                dl.clicked.connect(
+                    lambda _=False, mm=m.mode: self._on_download_mode(mm)
+                )
                 self._mode_download_btn = dl
                 row_l.addWidget(dl)
             group_layout.addWidget(row)
@@ -402,11 +402,11 @@ class ConfigurationTab(QWidget):
         ``settings.whisper_small_cpu_threads``. NOT coupled to the experimental
         intelligence flag. Deliberately non-promissory about any speedup.
         """
-        from PySide6.QtWidgets import QRadioButton, QButtonGroup
+        from PySide6.QtWidgets import QButtonGroup, QRadioButton
 
         from ...core.settings.settings import (
-            WHISPER_CPU_THREAD_CHOICES,
             DEFAULT_WHISPER_CPU_THREADS,
+            WHISPER_CPU_THREAD_CHOICES,
         )
 
         widget = QWidget()
@@ -421,7 +421,9 @@ class ConfigurationTab(QWidget):
         self._whisper_threads_group = QButtonGroup(self)
         self._whisper_threads_radios = {}
         for value in WHISPER_CPU_THREAD_CHOICES:
-            label = "Default (4)" if value == DEFAULT_WHISPER_CPU_THREADS else str(value)
+            label = (
+                "Default (4)" if value == DEFAULT_WHISPER_CPU_THREADS else str(value)
+            )
             rb = QRadioButton(label)
             rb.setAccessibleName(f"Whisper Small CPU threads {label}")
             rb.setProperty("threads", value)
@@ -554,8 +556,8 @@ class ConfigurationTab(QWidget):
         group_layout.addLayout(btn_row)
 
         note = QLabel(
-            "Enter part of an application name (e.g. \"keepass\", \"1password\", "
-            "\"bank\"). Matched against the foreground app/window locally. No "
+            'Enter part of an application name (e.g. "keepass", "1password", '
+            '"bank"). Matched against the foreground app/window locally. No '
             "screenshots, clipboard, or page contents are read; no audio is "
             "recorded while a protected app is active."
         )
@@ -576,7 +578,6 @@ class ConfigurationTab(QWidget):
     def _on_remove_protected(self) -> None:
         for item in self._protected_list.selectedItems():
             self._protected_list.takeItem(self._protected_list.row(item))
-
 
     def _create_asr_model_section(self) -> QWidget:
         widget = QWidget()
@@ -667,7 +668,11 @@ class ConfigurationTab(QWidget):
 
     def _on_mode_radio_toggled(self, checked: bool) -> None:
         """Mirror a product speech mode into the concrete ASR model selection."""
-        if not checked or self._syncing_model_selection or not hasattr(self, "_model_combo"):
+        if (
+            not checked
+            or self._syncing_model_selection
+            or not hasattr(self, "_model_combo")
+        ):
             return
 
         sender = self.sender()
@@ -819,9 +824,7 @@ class ConfigurationTab(QWidget):
         )
 
         # Phase 8A context controls.
-        self._context_detection_cb.setChecked(
-            self._settings.context_detection_enabled
-        )
+        self._context_detection_cb.setChecked(self._settings.context_detection_enabled)
         override_token = self._settings.context_override or AUTO
         idx = self._context_override_combo.findData(override_token)
         if idx < 0:
@@ -849,9 +852,11 @@ class ConfigurationTab(QWidget):
         # Advanced / Performance: Whisper Small CPU threads (bounded {4,6,8}).
         if hasattr(self, "_whisper_threads_radios"):
             from ...core.settings.settings import DEFAULT_WHISPER_CPU_THREADS
+
             val = self._settings.whisper_small_cpu_threads
-            rb = self._whisper_threads_radios.get(val) or \
-                self._whisper_threads_radios.get(DEFAULT_WHISPER_CPU_THREADS)
+            rb = self._whisper_threads_radios.get(
+                val
+            ) or self._whisper_threads_radios.get(DEFAULT_WHISPER_CPU_THREADS)
             if rb is not None:
                 rb.setChecked(True)
 
@@ -910,7 +915,8 @@ class ConfigurationTab(QWidget):
 
         # Domain-coverage selector -> explicit enabled domains.
         self._settings.enabled_domains = [
-            name for name, cb in getattr(self, "_domain_checks", {}).items()
+            name
+            for name, cb in getattr(self, "_domain_checks", {}).items()
             if cb.isChecked()
         ]
 
@@ -929,6 +935,15 @@ class ConfigurationTab(QWidget):
         # Speech Mode radios only mirror/select that combo.
         if model_name:
             self._settings.model_id = model_name
+            # Keep the dictation language consistent with the chosen model so
+            # the two never desync (e.g. selecting the Hindi IndicConformer
+            # model sets dictation_language='hi'). This prevents live speech
+            # from being transcribed by the wrong-language recognizer.
+            from ...core.asr.language_routing import get_model_language
+
+            model_lang = get_model_language(model_name)
+            if model_lang:
+                self._settings.dictation_language = model_lang
 
         # Advanced / Performance: persist the selected Whisper Small thread
         # count (Whisper-only; does not affect Parakeet). Validator/loader
