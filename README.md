@@ -58,8 +58,8 @@ network access is only involved for the one-time model download and for an
 ## Core features
 
 - Push-to-talk recording with a configurable global hotkey.
-- On-device transcription (default **Parakeet TDT 0.6B v2 INT8**; optional
-  **Whisper Small** higher-accuracy mode).
+- On-device transcription for **English, Hindi, and Kannada**. English uses Parakeet TDT 0.6B v2 INT8 by default (with optional Whisper models); Hindi and Kannada use their respective IndicConformer INT8 models.
+- Explicit dictation-language selection and language-compatible model routing. Hindi/Kannada sessions never silently fall back to an English-only recognizer.
 - Deterministic local technical-term correction and structured formatting.
 - User vocabulary, snippets, and context-aware formatting profiles.
 - Esc cancellation of an in-progress recording/transcription.
@@ -166,15 +166,21 @@ differ by CPU and utterance length.
 
 ## Models
 
-| Role | Model | Notes |
-|---|---|---|
-| **Default** | Parakeet TDT 0.6B v2 INT8 | On-device transducer; downloaded on first use. |
-| **Optional** | Whisper Small | Higher-accuracy mode; slower end-to-end. |
+| Language | Role | Model | Notes |
+|---|---|---|---|
+| English | **Default** | Parakeet TDT 0.6B v2 INT8 | On-device transducer; downloaded on first use. |
+| English | Optional | Whisper Small | Alternative recognizer; slower end-to-end. |
+| Hindi | Optional | IndicConformer Hindi INT8 | Language-specific CTC recognizer; downloaded on demand. |
+| Kannada | Optional | IndicConformer Kannada INT8 | Language-specific CTC recognizer; downloaded on demand. |
 
-Model weights are **downloaded on demand** (roughly 100 MB–1 GB depending on the
-model) into your local app-data folder and are **not** bundled with the
-installer. No relative accuracy/speed claim is made between models beyond what
-has been measured.
+Choose the dictation language and its matching model in Settings. SayIt checks
+language/model compatibility during selection and startup so a Hindi or Kannada
+session cannot silently run through an English-only model.
+
+Model weights are **downloaded on demand** into your local app-data folder and
+are **not** bundled with the installer. Download size depends on the selected
+model. No relative accuracy/speed claim is made between models beyond what has
+been measured.
 
 ## Installation
 

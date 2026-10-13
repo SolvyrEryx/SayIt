@@ -17,9 +17,7 @@ from src.sayit.ui.setup_wizard import (
 @pytest.fixture
 def wizard(qtbot):
     # Avoid writing real settings/devices during construction.
-    with patch(
-        "src.sayit.ui.setup_wizard.AudioRecorder.list_devices", return_value=[]
-    ):
+    with patch("src.sayit.ui.setup_wizard.AudioRecorder.list_devices", return_value=[]):
         w = SetupWizard()
         qtbot.addWidget(w)
         yield w
@@ -30,6 +28,7 @@ class TestWizardFlow:
         titles = [wizard.page(i).title() for i in wizard.pageIds()]
         assert titles == [
             "Welcome to SayIt",
+            "Dictation Language",
             "Microphone",
             "Speech Model",
             "Push-to-Talk Hotkey",
@@ -44,17 +43,13 @@ class TestWizardFlow:
 
 class TestModelHonesty:
     def test_model_not_ready_when_not_downloaded(self, qtbot):
-        with patch(
-            "src.sayit.ui.setup_wizard.is_model_downloaded", return_value=False
-        ):
+        with patch("src.sayit.ui.setup_wizard.is_model_downloaded", return_value=False):
             page = ModelSelectionPage()
             qtbot.addWidget(page)
             assert page.is_model_ready() is False
 
     def test_model_ready_when_downloaded(self, qtbot):
-        with patch(
-            "src.sayit.ui.setup_wizard.is_model_downloaded", return_value=True
-        ):
+        with patch("src.sayit.ui.setup_wizard.is_model_downloaded", return_value=True):
             page = ModelSelectionPage()
             qtbot.addWidget(page)
             assert page.is_model_ready() is True

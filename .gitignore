@@ -20,6 +20,7 @@ installer-output/
 
 # Virtual environments
 .venv
+.venv-win/
 
 # Logs (runtime launch logs, etc.)
 *.log
