@@ -46,7 +46,15 @@ sayit = ["_vendor/linux/libportaudio.so*"]
 [dependency-groups]
 dev = [
     "black>=25.12.0",
-    "briefcase>=0.4.6",
+    # Briefcase is pinned per-platform:
+    # - Windows needs >=0.4.6 (0.3.26's single-clause Specifier mis-parses the
+    #   project's requires-python; 0.4.x uses SpecifierSet and parses it).
+    # - Linux keeps 0.3.26: Briefcase 0.4.x has an AppImage-backend regression
+    #   (`'OrderedDict' object has no attribute 'host_arch'`) that breaks
+    #   briefcase.toml creation. 0.3.26 builds the AppImage correctly and
+    #   accepts the current single-clause requires-python (">=3.12").
+    "briefcase>=0.4.6; sys_platform == 'win32'",
+    "briefcase==0.3.26; sys_platform != 'win32'",
     "isort>=7.0.0",
     "pre-commit>=4.5.1",
     "pyside6>=6.10.1",

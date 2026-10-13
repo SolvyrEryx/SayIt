@@ -2,8 +2,10 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
-    "python_full_version >= '3.14'",
-    "python_full_version < '3.14'",
+    "python_full_version >= '3.14' and sys_platform != 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.14' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'win32'",
 ]
 
 [[package]]
@@ -203,25 +205,58 @@ wheels = [
 
 [[package]]
 name = "briefcase"
+version = "0.3.26"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "build", marker = "sys_platform != 'win32'" },
+    { name = "cookiecutter", marker = "sys_platform != 'win32'" },
+    { name = "dmgbuild", marker = "sys_platform == 'darwin'" },
+    { name = "gitpython", marker = "sys_platform != 'win32'" },
+    { name = "httpx", marker = "sys_platform != 'win32'" },
+    { name = "packaging", marker = "sys_platform != 'win32'" },
+    { name = "pip", marker = "sys_platform != 'win32'" },
+    { name = "platformdirs", marker = "sys_platform != 'win32'" },
+    { name = "psutil", marker = "sys_platform != 'win32'" },
+    { name = "python-dateutil", marker = "sys_platform != 'win32'" },
+    { name = "rich", marker = "sys_platform != 'win32'" },
+    { name = "setuptools", marker = "sys_platform != 'win32'" },
+    { name = "tomli-w", marker = "sys_platform != 'win32'" },
+    { name = "truststore", marker = "sys_platform != 'win32'" },
+    { name = "wheel", marker = "sys_platform != 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7a/c6/668fd69fcc982f8673d1324da034e3ef0c5f2eaa14feab25693dddccd563/briefcase-0.3.26.tar.gz", hash = "sha256:ebde1b0e899c5d1107737694f8d6070b60706c4260ce787915b72f29d6c8413d", size = 2608149, upload-time = "2025-12-04T08:06:27.348Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/d0/9d1199811cc088f4fb1e9faa8504e620e45e4502ac4ef5357cad369ff87f/briefcase-0.3.26-py3-none-any.whl", hash = "sha256:8c1e8b3c9006f730c9e4983d640cb0b52333c17f605d952b503cb6beae5fec38", size = 265200, upload-time = "2025-12-04T08:06:24.491Z" },
+]
+
+[[package]]
+name = "briefcase"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'win32'",
+]
 dependencies = [
-    { name = "chardet" },
-    { name = "cookiecutter" },
-    { name = "dmgbuild", marker = "sys_platform == 'darwin'" },
-    { name = "gitpython" },
-    { name = "httpx2" },
-    { name = "packaging" },
-    { name = "pip" },
-    { name = "platformdirs" },
-    { name = "psutil" },
-    { name = "python-dateutil" },
-    { name = "rich" },
-    { name = "setuptools" },
-    { name = "tenacity" },
-    { name = "tomli-w" },
-    { name = "wheel" },
-    { name = "xbuild" },
+    { name = "chardet", marker = "sys_platform == 'win32'" },
+    { name = "cookiecutter", marker = "sys_platform == 'win32'" },
+    { name = "gitpython", marker = "sys_platform == 'win32'" },
+    { name = "httpx2", marker = "sys_platform == 'win32'" },
+    { name = "packaging", marker = "sys_platform == 'win32'" },
+    { name = "pip", marker = "sys_platform == 'win32'" },
+    { name = "platformdirs", marker = "sys_platform == 'win32'" },
+    { name = "psutil", marker = "sys_platform == 'win32'" },
+    { name = "python-dateutil", marker = "sys_platform == 'win32'" },
+    { name = "rich", marker = "sys_platform == 'win32'" },
+    { name = "setuptools", marker = "sys_platform == 'win32'" },
+    { name = "tenacity", marker = "sys_platform == 'win32'" },
+    { name = "tomli-w", marker = "sys_platform == 'win32'" },
+    { name = "wheel", marker = "sys_platform == 'win32'" },
+    { name = "xbuild", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0d/a1/e52840f4aa805afe870b82e1e39e59dcc8be25889c1d39f34c4f2d2f7f9e/briefcase-0.4.6.tar.gz", hash = "sha256:d8a78ff8acc97c5df6ad15560f2fb2e8508476e1ea1b331ef4cae6839dbbf804", size = 2733536, upload-time = "2026-10-13T09:40:33.167Z" }
 wheels = [
@@ -463,7 +498,7 @@ name = "dependency-groups"
 version = "1.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "packaging" },
+    { name = "packaging", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b5/16/65e61d8e837e0d70a99a0d4dd76e2af53357c3a03ed1db8ad9b5786d7f25/dependency_groups-1.3.2.tar.gz", hash = "sha256:c81831f43828dbc3987ee247eb198241a0152b8e7ceab10977cc3808eb388ac7", size = 13309, upload-time = "2026-08-22T02:43:30.137Z" }
 wheels = [
@@ -493,8 +528,8 @@ name = "dmgbuild"
 version = "1.6.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ds-store" },
-    { name = "mac-alias" },
+    { name = "ds-store", marker = "sys_platform != 'win32'" },
+    { name = "mac-alias", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/86/2d/b7c29da855b4953acf298b724d6911e65f901313372a1402805745da48ef/dmgbuild-1.6.6.tar.gz", hash = "sha256:72ce448feec6aa24dba5e777c44a0397b7ae1b4d86fb4dd537e44cf1653c03ec", size = 36923, upload-time = "2025-12-04T01:00:21.42Z" }
 wheels = [
@@ -506,7 +541,7 @@ name = "ds-store"
 version = "1.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mac-alias" },
+    { name = "mac-alias", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e9/11/971e423750b219ec3f3a7f27dfb9bd74aef3d3fdfee6cc7df10a0217b5cd/ds_store-1.3.2.tar.gz", hash = "sha256:e4da49df901123481a85b9250945f2aac054a0f0c29352cd2cc858c536cdd364", size = 26574, upload-time = "2025-12-04T00:52:46.178Z" }
 wheels = [
@@ -788,8 +823,8 @@ name = "httpcore2"
 version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "sys_platform == 'win32'" },
+    { name = "truststore", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cb/f3/1db7aa2bc2524062192bb0e0323969492d1883152a232fe36eea65f4e35c/httpcore2-2.13.1.tar.gz", hash = "sha256:e0aa977abe17e69a3b820a24542a6fa88702676d83880b8d194dcd18408e5103", size = 68071, upload-time = "2026-09-23T07:47:22.372Z" }
 wheels = [
@@ -816,25 +851,15 @@ name = "httpx2"
 version = "2.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyio", marker = "sys_platform != 'emscripten'" },
-    { name = "httpcore2", marker = "sys_platform != 'emscripten'" },
-    { name = "httpx2-jsfetch", marker = "sys_platform == 'emscripten'" },
-    { name = "idna" },
-    { name = "truststore", marker = "sys_platform != 'emscripten'" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "anyio", marker = "sys_platform == 'win32'" },
+    { name = "httpcore2", marker = "sys_platform == 'win32'" },
+    { name = "idna", marker = "sys_platform == 'win32'" },
+    { name = "truststore", marker = "sys_platform == 'win32'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' and sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d5/44/474bef2a0e9d90f1715d32cb98b0738695ca17ba324095fb2497ed7fbd59/httpx2-2.13.1.tar.gz", hash = "sha256:e48744a19e3af5ee48313d0ce5fe941d5422fae5705ea922a4aabf94d7800dfa", size = 100405, upload-time = "2026-09-23T07:47:23.052Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d8/9c/6fe8931fd9f381042a9e4c7d5a7b4cbf7016b252bec0c99a49fce42c3326/httpx2-2.13.1-py3-none-any.whl", hash = "sha256:6dff50fabc270ee5fd25d845d0b078ed20564579744d6d962850975996d2f9a4", size = 95597, upload-time = "2026-09-23T07:47:20.995Z" },
-]
-
-[[package]]
-name = "httpx2-jsfetch"
-version = "1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/cd/c4/0e5636363151a2a1795e0a77617168b9ca438e1748ec05fc9b5687f93d64/httpx2_jsfetch-1.0.tar.gz", hash = "sha256:70a0e3eabfef7cce5ad9c629f7d01ca05e418f586646f4ddf14782e4c1454c60", size = 6872, upload-time = "2026-08-07T00:13:07.492Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9b/43/832f631d32e4f1211caa2ba368317739fe71f0b8530e4c9d15dc454bac2a/httpx2_jsfetch-1.0-py3-none-any.whl", hash = "sha256:cb916b707601e69a07721aabc8f3f6659be3a6893bc1ff5c6f9e02241df2da32", size = 6382, upload-time = "2026-08-07T00:13:06.567Z" },
 ]
 
 [[package]]
@@ -1593,10 +1618,10 @@ name = "pyobjc-framework-applicationservices"
 version = "12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyobjc-core" },
-    { name = "pyobjc-framework-cocoa" },
-    { name = "pyobjc-framework-coretext" },
-    { name = "pyobjc-framework-quartz" },
+    { name = "pyobjc-core", marker = "sys_platform != 'win32'" },
+    { name = "pyobjc-framework-cocoa", marker = "sys_platform != 'win32'" },
+    { name = "pyobjc-framework-coretext", marker = "sys_platform != 'win32'" },
+    { name = "pyobjc-framework-quartz", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/be/6a/d4e613c8e926a5744fc47a9e9fea08384a510dc4f27d844f7ad7a2d793bd/pyobjc_framework_applicationservices-12.1.tar.gz", hash = "sha256:c06abb74f119bc27aeb41bf1aef8102c0ae1288aec1ac8665ea186a067a8945b", size = 103247, upload-time = "2025-11-14T10:08:52.18Z" }
 wheels = [
@@ -1612,7 +1637,7 @@ name = "pyobjc-framework-cocoa"
 version = "12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyobjc-core" },
+    { name = "pyobjc-core", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/02/a3/16ca9a15e77c061a9250afbae2eae26f2e1579eb8ca9462ae2d2c71e1169/pyobjc_framework_cocoa-12.1.tar.gz", hash = "sha256:5556c87db95711b985d5efdaaf01c917ddd41d148b1e52a0c66b1a2e2c5c1640", size = 2772191, upload-time = "2025-11-14T10:13:02.069Z" }
 wheels = [
@@ -1628,9 +1653,9 @@ name = "pyobjc-framework-coretext"
 version = "12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyobjc-core" },
-    { name = "pyobjc-framework-cocoa" },
-    { name = "pyobjc-framework-quartz" },
+    { name = "pyobjc-core", marker = "sys_platform != 'win32'" },
+    { name = "pyobjc-framework-cocoa", marker = "sys_platform != 'win32'" },
+    { name = "pyobjc-framework-quartz", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/29/da/682c9c92a39f713bd3c56e7375fa8f1b10ad558ecb075258ab6f1cdd4a6d/pyobjc_framework_coretext-12.1.tar.gz", hash = "sha256:e0adb717738fae395dc645c9e8a10bb5f6a4277e73cba8fa2a57f3b518e71da5", size = 90124, upload-time = "2025-11-14T10:14:38.596Z" }
 wheels = [
@@ -1646,8 +1671,8 @@ name = "pyobjc-framework-quartz"
 version = "12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pyobjc-core" },
-    { name = "pyobjc-framework-cocoa" },
+    { name = "pyobjc-core", marker = "sys_platform != 'win32'" },
+    { name = "pyobjc-framework-cocoa", marker = "sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/94/18/cc59f3d4355c9456fc945eae7fe8797003c4da99212dd531ad1b0de8a0c6/pyobjc_framework_quartz-12.1.tar.gz", hash = "sha256:27f782f3513ac88ec9b6c82d9767eef95a5cf4175ce88a1e5a65875fee799608", size = 3159099, upload-time = "2025-11-14T10:21:24.31Z" }
 wheels = [
@@ -2076,7 +2101,8 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "black" },
-    { name = "briefcase" },
+    { name = "briefcase", version = "0.3.26", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'win32'" },
+    { name = "briefcase", version = "0.4.6", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'win32'" },
     { name = "isort" },
     { name = "pre-commit" },
     { name = "pyside6" },
@@ -2102,7 +2128,8 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "black", specifier = ">=25.12.0" },
-    { name = "briefcase", specifier = ">=0.4.6" },
+    { name = "briefcase", marker = "sys_platform != 'win32'", specifier = "==0.3.26" },
+    { name = "briefcase", marker = "sys_platform == 'win32'", specifier = ">=0.4.6" },
     { name = "isort", specifier = ">=7.0.0" },
     { name = "pre-commit", specifier = ">=4.5.1" },
     { name = "pyside6", specifier = ">=6.10.1" },
@@ -2442,10 +2469,10 @@ name = "xbuild"
 version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "build" },
-    { name = "dependency-groups" },
-    { name = "filelock" },
-    { name = "platformdirs" },
+    { name = "build", marker = "sys_platform == 'win32'" },
+    { name = "dependency-groups", marker = "sys_platform == 'win32'" },
+    { name = "filelock", marker = "sys_platform == 'win32'" },
+    { name = "platformdirs", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5f/f0/de0398e6499e2b07c871e20d511ef0d7162b98b140059a9a1cd9269b1053/xbuild-0.4.1.tar.gz", hash = "sha256:f0b1f76adab44b1be6d0587d1433ced1a0903e7402ef381f6f7c35b0e8126d17", size = 114687, upload-time = "2026-10-07T01:59:13.426Z" }
 wheels = [
