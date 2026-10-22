@@ -317,55 +317,239 @@ def gate_ondemand_contents(project_root: Path, plat: str) -> None:
     print("[ondemand gate] PASS: no bundled model weights in the smaller app tree.")
 
 
+def _dir_size_bytes(path: Path) -> int:
+    """Total on-disk size of all files under ``path`` (follows the tree, not
+    symlinks). Used to measure the completed .app payload for DMG sizing."""
+    total = 0
+    for p in path.rglob("*"):
+        try:
+            if p.is_symlink():
+                # Count the link entry itself, not its (possibly external) target.
+                total += p.lstat().st_size
+            elif p.is_file():
+                total += p.stat().st_size
+        except OSError:
+            # A file that vanished mid-walk should not crash sizing.
+            continue
+    return total
+
+
+def compute_dmg_capacity_bytes(app_payload_bytes: int) -> int:
+    """Compute the writable DMG image capacity (bytes) for an ``.app`` payload.
+
+    The capacity must exceed the raw payload because an HFS+/APFS image carries
+    filesystem overhead (catalog, allocation bitmap, journal) and the packaging
+    operations (``ditto`` copy + the ``/Applications`` symlink + volume icon /
+    ``.DS_Store`` layout) need working headroom. dmgbuild 1.6.6 under Briefcase
+    0.3.26 under-sizes the image for a large model-bundling payload (~1.33 GiB),
+    so we size the image ourselves from the MEASURED payload.
+
+    Rule: 30% headroom, with a minimum absolute floor of 64 MiB of slack so even
+    tiny (online) bundles always fit. Raises ``ValueError`` on a non-positive /
+    invalid payload so an empty or failed build never yields a bogus image.
+    """
+    if not isinstance(app_payload_bytes, int) or app_payload_bytes <= 0:
+        raise ValueError(
+            f"invalid .app payload size for DMG sizing: {app_payload_bytes!r}"
+        )
+    mib = 1024 * 1024
+    headroom = max(int(app_payload_bytes * 0.30), 64 * mib)
+    capacity = app_payload_bytes + headroom
+    # Round up to a whole MiB; hdiutil accepts a byte size but whole MiB is tidy.
+    capacity = ((capacity + mib - 1) // mib) * mib
+    if capacity <= app_payload_bytes:
+        # Defensive: never return a capacity that cannot hold the payload.
+        raise ValueError(
+            f"computed DMG capacity {capacity} <= payload {app_payload_bytes}"
+        )
+    return capacity
+
+
+def _make_dmg_hdiutil(app_path: Path, out_dmg: Path, volume_name: str) -> None:
+    """Build a compressed, read-only DMG from a (already-signed) ``.app`` using
+    macOS-native ``hdiutil``, sized from the actual payload.
+
+    Steps:
+      1. Measure the completed .app payload and compute a sufficient capacity.
+      2. Create a writable UDRW image of that capacity (``hdiutil create``).
+      3. Attach it, ``ditto`` the .app in WITHOUT modifying its contents (so the
+         code signature stays valid), add the ``/Applications`` shortcut to
+         preserve the drag-to-install layout, then detach.
+      4. Convert the writable image to a compressed read-only UDZO DMG.
+      5. Verify the DMG mounts and contains the complete ``.app``.
+
+    Never mutates the signed .app. Raises ``RuntimeError`` with a clear
+    diagnostic if any step fails or the capacity cannot hold the payload.
+    """
+    import tempfile
+
+    if not app_path.is_dir():
+        raise RuntimeError(f"[macOS dmg] .app not found: {app_path}")
+
+    payload = _dir_size_bytes(app_path)
+    capacity = compute_dmg_capacity_bytes(payload)
+    print(
+        f"[macOS dmg] payload={payload / (1024*1024):.1f} MiB -> "
+        f"image capacity={capacity / (1024*1024):.1f} MiB "
+        f"(payload + max(30%, 64 MiB) headroom)"
+    )
+
+    out_dmg.parent.mkdir(parents=True, exist_ok=True)
+    if out_dmg.exists():
+        out_dmg.unlink()
+
+    with tempfile.TemporaryDirectory() as td:
+        rw_dmg = Path(td) / "sayit-rw.dmg"
+        # 1) Create a writable image sized to our computed capacity.
+        subprocess.run(
+            [
+                "hdiutil", "create",
+                "-size", str(capacity),
+                "-fs", "HFS+",
+                "-volname", volume_name,
+                "-type", "UDIF",
+                str(rw_dmg),
+            ],
+            check=True,
+        )
+        # 2) Attach (no auto-open, no Finder browse) and find the mount point.
+        attach = subprocess.run(
+            [
+                "hdiutil", "attach", str(rw_dmg),
+                "-nobrowse", "-noautoopen", "-owners", "on",
+            ],
+            check=True, capture_output=True, text=True,
+        )
+        mount_point = None
+        for line in attach.stdout.splitlines():
+            if "/Volumes/" in line:
+                mount_point = "/Volumes/" + line.split("/Volumes/", 1)[1].strip()
+        if not mount_point:
+            raise RuntimeError(
+                f"[macOS dmg] could not determine mount point:\n{attach.stdout}"
+            )
+        try:
+            mp = Path(mount_point)
+            # 3) Copy the signed .app verbatim (ditto preserves metadata +
+            #    extended attributes, so the code signature remains valid).
+            subprocess.run(
+                ["ditto", str(app_path), str(mp / app_path.name)], check=True
+            )
+            # Preserve the drag-to-install layout: an /Applications shortcut.
+            app_link = mp / "Applications"
+            if not app_link.exists():
+                os.symlink("/Applications", app_link)
+        finally:
+            # Always detach, even if the copy failed.
+            subprocess.run(
+                ["hdiutil", "detach", mount_point, "-force"],
+                check=False,
+            )
+        # 4) Convert to a compressed, read-only distributable DMG.
+        subprocess.run(
+            [
+                "hdiutil", "convert", str(rw_dmg),
+                "-format", "UDZO", "-imagekey", "zlib-level=9",
+                "-o", str(out_dmg),
+            ],
+            check=True,
+        )
+
+    # 5) Verify the output DMG mounts and contains the complete .app.
+    verify = subprocess.run(
+        ["hdiutil", "attach", str(out_dmg), "-nobrowse", "-noautoopen", "-readonly"],
+        check=True, capture_output=True, text=True,
+    )
+    vmount = None
+    for line in verify.stdout.splitlines():
+        if "/Volumes/" in line:
+            vmount = "/Volumes/" + line.split("/Volumes/", 1)[1].strip()
+    try:
+        if not vmount:
+            raise RuntimeError("[macOS dmg] verification mount failed")
+        copied_app = Path(vmount) / app_path.name
+        if not (copied_app / "Contents" / "MacOS").is_dir():
+            raise RuntimeError(
+                f"[macOS dmg] verification: {copied_app} missing Contents/MacOS"
+            )
+        copied_size = _dir_size_bytes(copied_app)
+        # The copied payload must match the source within a small tolerance
+        # (ditto is a faithful copy; allow 1% for FS metadata differences).
+        if copied_size < payload * 0.99:
+            raise RuntimeError(
+                f"[macOS dmg] verification: copied payload {copied_size} < "
+                f"source {payload} (incomplete copy)"
+            )
+        print(
+            f"[macOS dmg] verified: {out_dmg.name} mounts and contains "
+            f"{app_path.name} ({copied_size / (1024*1024):.1f} MiB)"
+        )
+    finally:
+        if vmount:
+            subprocess.run(["hdiutil", "detach", vmount, "-force"], check=False)
+
+
 def package_macos_dmg(project_root: Path, variant: str) -> None:
     """Package the built macOS .app into a DMG and rename per arch + variant.
 
-    Signing/notarization are credential-gated: when ``SAYIT_MACOS_SIGN_IDENTITY``
-    is set (a Developer ID Application identity), Briefcase signs; otherwise the
-    build is ad-hoc/unsigned and clearly reported as NOT notarized. We never
-    fabricate credentials or label an unsigned DMG as notarized.
+    Two-stage, to avoid dmgbuild under-sizing the image for the model-bundling
+    offline bundle (~1.33 GiB), which failed with "No space left on device":
 
-    The DMG is renamed to SayIt-<arch>[-Offline].dmg so the arch + variant are
-    unambiguous for the website manifest and users.
+      1. ``briefcase package macOS app -p zip`` SIGNS the .app (ad-hoc when no
+         identity, Developer ID when ``SAYIT_MACOS_SIGN_IDENTITY`` is set) and
+         produces a zipped .app — WITHOUT invoking dmgbuild. Signing semantics
+         are unchanged.
+      2. A payload-sized ``hdiutil`` helper builds the DMG from the already-
+         signed .app (ditto preserves the signature), preserving the
+         /Applications drag-install layout, then compresses it read-only and
+         verifies it mounts with the complete .app.
+
+    Signing/notarization stay credential-gated and are never fabricated. The DMG
+    is named SayIt-macOS-<arch>[-Offline].dmg for the website manifest + users.
     """
     import platform as _platform
 
     identity = os.environ.get("SAYIT_MACOS_SIGN_IDENTITY", "").strip()
-    # --no-input: never block on an interactive prompt on a headless CI runner.
-    # Briefcase otherwise prompts for a signing identity and aborts (exit 214)
-    # when no TTY is attached.
-    cmd = [sys.executable, "-m", "briefcase", "package", "macOS", "app", "--no-input"]
+    # Package as a signed, zipped .app (NO dmgbuild). --no-input: never block on
+    # an interactive prompt on a headless CI runner.
+    cmd = [
+        sys.executable, "-m", "briefcase", "package", "macOS", "app",
+        "--no-input", "--packaging-format", "zip",
+    ]
     if identity:
         cmd += ["--identity", identity]
-        print(f"[macOS] packaging DMG with signing identity: {identity[:12]}…")
+        print(f"[macOS] signing .app with Developer ID identity: {identity[:12]}…")
     else:
-        # No signing secret present -> produce an unsigned ad-hoc DMG. This is a
-        # development artifact; public distribution requires signing+notarization.
-        # NOTE: the correct Briefcase flag for an unsigned package is
-        # ``--adhoc-sign`` (ad-hoc codesign, no identity). ``--no-sign`` is NOT a
-        # valid option for ``briefcase package macOS`` and causes Briefcase to
-        # fall through to the interactive identity prompt, which aborts on CI.
+        # No signing secret present -> ad-hoc sign. The correct Briefcase flag
+        # for an unsigned/ad-hoc package is ``--adhoc-sign`` (``--no-sign`` is
+        # not a valid option and causes an interactive-prompt abort on CI).
         cmd += ["--adhoc-sign"]
         print(
             "[macOS] NO signing identity (SAYIT_MACOS_SIGN_IDENTITY unset): "
-            "building UNSIGNED (ad-hoc) DMG. This is NOT notarized and not for "
-            "public distribution."
+            "ad-hoc signing .app. The resulting DMG is UNSIGNED/NOT notarized "
+            "and not for public distribution."
         )
     subprocess.run(cmd, cwd=project_root, check=True)
 
-    # Locate the produced DMG and rename with arch + variant.
-    dist = project_root / "dist"
-    dmgs = sorted(dist.glob("*.dmg")) if dist.is_dir() else []
-    if not dmgs:
-        print("[macOS] WARNING: no DMG found in dist/ after packaging.")
-        return
-    produced = dmgs[-1]
+    # Locate the signed .app that Briefcase built + signed.
+    app_glob = sorted(
+        (project_root / "build" / "sayit" / "macos" / "app").glob("*.app")
+    )
+    if not app_glob:
+        raise RuntimeError(
+            "[macOS] no signed .app found under build/sayit/macos/app after "
+            "briefcase package"
+        )
+    app_path = app_glob[0]
+
     machine = (_platform.machine() or "").lower()
     arch_tag = "arm64" if machine in ("arm64", "aarch64") else "x86_64"
     suffix = "-Offline" if variant == "offline" else ""
+    dist = project_root / "dist"
     target = dist / f"SayIt-macOS-{arch_tag}{suffix}.dmg"
-    if produced != target:
-        shutil.copy2(produced, target)
+
+    # Build the payload-sized DMG from the signed .app (dmgbuild not used).
+    _make_dmg_hdiutil(app_path, target, volume_name="SayIt")
     print(f"[macOS] DMG ready: {target}")
 
 
