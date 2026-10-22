@@ -384,6 +384,24 @@ jobs:
       with:
         ref: ${{ github.ref }}
 
+    # Reclaim disk before the build. The Full Offline .app bundles ~1.33 GiB of
+    # models plus the full dependency tree; dmgbuild then copies the whole app
+    # into a temporary DMG volume (needs roughly 2x the app size of scratch
+    # space). The hosted macOS runners ship large unused toolchains/simulators;
+    # removing them avoids the "No space left on device" failure during DMG
+    # creation. Each removal is best-effort and must not fail the job. The
+    # active Xcode command-line tools (codesign/ditto/hdiutil) are left intact.
+    - name: Free up disk space
+      run: |
+        echo "=== before ==="; df -h /
+        sudo rm -rf ~/Library/Developer/CoreSimulator/Caches/* 2>/dev/null || true
+        sudo rm -rf ~/Library/Developer/Xcode/iOS\ DeviceSupport/* 2>/dev/null || true
+        # Remove non-active Xcode installs and the device simulators SayIt never
+        # uses (it is a CLI/Qt build, not an iOS/tvOS/watchOS app).
+        ls -d /Applications/Xcode_*.app 2>/dev/null | grep -v "$(readlink -f "$(xcode-select -p)" | sed 's#/Contents/Developer##')" | xargs -I {} sudo rm -rf {} 2>/dev/null || true
+        sudo rm -rf /Library/Developer/CoreSimulator/Profiles/Runtimes/* 2>/dev/null || true
+        echo "=== after ==="; df -h /
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
