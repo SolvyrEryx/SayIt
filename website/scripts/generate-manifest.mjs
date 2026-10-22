@@ -75,6 +75,79 @@ function findSingleFile(files, extension) {
   return matches[0];
 }
 
+const OFFLINE_SUFFIX = "-offline.exe";
+
+/**
+ * Classify the Windows installer(s) by explicit naming convention. SayIt ships
+ * up to two Windows installers:
+ *   - Full Offline Installer:  SayIt-Setup-x64-Offline.exe  (primary download)
+ *   - Smaller on-demand:       SayIt-Setup-x64.exe          (models on first use)
+ *
+ * Returns { offline?: name, ondemand?: name }. Fails fast on ambiguity: more
+ * than one file of either kind, or no .exe at all. Exactly one .exe is allowed
+ * (a single-variant release) and is classified by its name.
+ */
+export function classifyWindowsInstallers(files) {
+  const exes = files.filter((name) => name.toLowerCase().endsWith(".exe"));
+  if (exes.length === 0) {
+    throw new Error("Required .exe artifact missing from release files (§40: no partial releases)");
+  }
+  const offline = exes.filter((n) => n.toLowerCase().endsWith(OFFLINE_SUFFIX));
+  const ondemand = exes.filter((n) => !n.toLowerCase().endsWith(OFFLINE_SUFFIX));
+
+  if (offline.length > 1) {
+    throw new Error(`Ambiguous Full Offline installers (${offline.length}): ${offline.join(", ")}`);
+  }
+  if (ondemand.length > 1) {
+    throw new Error(`Ambiguous smaller installers (${ondemand.length}): ${ondemand.join(", ")}`);
+  }
+  return {
+    ...(offline.length === 1 ? { offline: offline[0] } : {}),
+    ...(ondemand.length === 1 ? { ondemand: ondemand[0] } : {}),
+  };
+}
+
+const MAC_ARCHES = { arm64: "arm64", x86_64: "x86_64" };
+
+/**
+ * Classify macOS DMGs by architecture + variant from explicit names:
+ *   SayIt-macOS-arm64.dmg          -> macos_arm64 (offline)
+ *   SayIt-macOS-arm64-Offline.dmg  -> macos_arm64 (offline, explicit)
+ *   SayIt-macOS-arm64-OnDemand.dmg -> macos_arm64_ondemand
+ * macOS is OPTIONAL: a release may ship none. Fails fast only on an ambiguous
+ * duplicate for the same (arch, variant). Returns a map keyed by platform key.
+ */
+export function classifyMacInstallers(files) {
+  const dmgs = files.filter((n) => n.toLowerCase().endsWith(".dmg"));
+  const out = {};
+  for (const arch of Object.keys(MAC_ARCHES)) {
+    for (const [variant, keySuffix, nameTag] of [
+      ["ondemand", "_ondemand", "ondemand"],
+      ["offline", "", "offline"],
+    ]) {
+      const re = new RegExp(`^SayIt-macOS-${arch}(?:-(offline|ondemand))?\\.dmg$`, "i");
+      const matches = dmgs.filter((n) => {
+        const m = re.exec(n);
+        if (!m) return false;
+        const tag = (m[1] || "offline").toLowerCase(); // default variant = offline
+        return tag === nameTag;
+      });
+      if (matches.length > 1) {
+        throw new Error(
+          `Ambiguous macOS ${arch} ${variant} DMGs: ${matches.join(", ")}`,
+        );
+      }
+      if (matches.length === 1) {
+        const platformKey = arch === "arm64"
+          ? `macos_arm64${keySuffix}`
+          : `macos_intel${keySuffix}`;
+        out[platformKey] = { file: matches[0], architecture: arch, variant };
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * @param {{
  *   tag: string,
@@ -97,7 +170,7 @@ export async function generateReleaseManifest(options) {
   if (!DATE_PATTERN.test(date)) throw new Error(`Invalid release date: "${date}"`);
 
   const files = (await readdir(releaseFilesDir)).filter((name) => !name.startsWith("."));
-  const exeName = findSingleFile(files, ".exe");
+  const windowsInstallers = classifyWindowsInstallers(files);
   const appImageName = findSingleFile(files, ".appimage");
 
   // §41 — version consistency where the artifact name encodes it.
@@ -108,10 +181,75 @@ export async function generateReleaseManifest(options) {
     );
   }
 
-  const assets = [
-    { key: "windows", file: exeName, architecture: "x64", format: "exe" },
-    { key: "linux", file: appImageName, architecture: "x86_64", format: "AppImage" },
+  // The four model configurations the Full Offline Installer bundles. Used only
+  // as descriptive metadata on the offline Windows asset; never implies the
+  // smaller installer bundles anything.
+  const OFFLINE_MODELS = [
+    { id: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", role: "english_fast" },
+    { id: "sherpa-onnx-whisper-small", role: "english_higher_accuracy" },
+    { id: "indicconformer-hi-int8", role: "hindi" },
+    { id: "indicconformer-kn-int8", role: "kannada" },
   ];
+
+  // Primary Windows download = Full Offline Installer when present; otherwise
+  // the smaller installer occupies the `windows` slot (single-variant release).
+  // When both exist, the smaller one is exposed under `windows_ondemand`.
+  const assets = [];
+  if (windowsInstallers.offline) {
+    assets.push({
+      key: "windows",
+      file: windowsInstallers.offline,
+      architecture: "x64",
+      format: "exe",
+      variant: "offline",
+      bundles_models: true,
+      models: OFFLINE_MODELS,
+    });
+    if (windowsInstallers.ondemand) {
+      assets.push({
+        key: "windows_ondemand",
+        file: windowsInstallers.ondemand,
+        architecture: "x64",
+        format: "exe",
+        variant: "ondemand",
+        bundles_models: false,
+      });
+    }
+  } else {
+    // No offline installer: the smaller one is the (only) Windows download.
+    assets.push({
+      key: "windows",
+      file: windowsInstallers.ondemand,
+      architecture: "x64",
+      format: "exe",
+      variant: "ondemand",
+      bundles_models: false,
+    });
+  }
+  assets.push({
+    key: "linux",
+    file: appImageName,
+    architecture: "x86_64",
+    format: "AppImage",
+    variant: "appimage",
+    bundles_models: false,
+  });
+
+  // macOS DMGs are optional; add whichever arch/variant artifacts exist.
+  const macInstallers = classifyMacInstallers(files);
+  for (const [key, meta] of Object.entries(macInstallers)) {
+    const offline = meta.variant === "offline";
+    assets.push({
+      key,
+      file: meta.file,
+      architecture: meta.architecture,
+      format: "dmg",
+      variant: meta.variant,
+      bundles_models: offline,
+      min_os_version: "12.0",
+      ...(offline ? { models: OFFLINE_MODELS } : {}),
+    });
+  }
 
   const platforms = {};
   const checksumLines = [];
@@ -135,6 +273,10 @@ export async function generateReleaseManifest(options) {
       url,
       sha256,
       size_bytes: info.size,
+      variant: asset.variant,
+      bundles_models: asset.bundles_models,
+      ...(asset.min_os_version ? { min_os_version: asset.min_os_version } : {}),
+      ...(asset.models ? { models: asset.models } : {}),
     };
     checksumLines.push(`${sha256}  ${asset.file}`);
   }

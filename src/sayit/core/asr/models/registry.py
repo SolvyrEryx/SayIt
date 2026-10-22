@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
 
 from ..file_utils import get_models_dir, is_valid_model_dir
+from .model_integrity import is_bundled, resolve_bundled_model_dir
 
 GITHUB_RELEASE_BASE = (
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
@@ -71,7 +72,7 @@ def load_models() -> List[ModelInfo]:
 AVAILABLE_MODELS: List[ModelInfo] = load_models()
 
 
-DownloadStatus = Literal["downloaded", "not_downloaded"]
+DownloadStatus = Literal["downloaded", "bundled", "not_downloaded"]
 
 
 def get_model_by_id(model_id: str) -> ModelInfo | None:
@@ -96,18 +97,38 @@ def get_available_languages() -> List[str]:
     return langs
 
 
-def is_model_downloaded(model_id: str) -> bool:
+def _is_downloaded_in_cache(model_id: str) -> bool:
+    """True only if a valid copy exists in the per-user model cache."""
     models_dir = get_models_dir()
     model_path = os.path.join(models_dir, model_id)
-
     if not os.path.isdir(model_path):
         return False
-
     return is_valid_model_dir(model_path)
 
 
+def is_model_downloaded(model_id: str) -> bool:
+    """Whether the model is usable locally WITHOUT a network download.
+
+    A model shipped by the Full Offline Installer (``is_bundled``) counts as
+    available even though it was never downloaded into the user cache. This is
+    what the first-use loader checks to decide whether to download.
+    """
+    if is_bundled(model_id):
+        return True
+    return _is_downloaded_in_cache(model_id)
+
+
 def get_model_download_status(model_id: str) -> DownloadStatus:
-    return "downloaded" if is_model_downloaded(model_id) else "not_downloaded"
+    if _is_downloaded_in_cache(model_id):
+        return "downloaded"
+    if is_bundled(model_id):
+        return "bundled"
+    return "not_downloaded"
+
+
+def is_model_available(model_id: str) -> bool:
+    """True if the model can be loaded locally (bundled OR downloaded)."""
+    return is_model_downloaded(model_id)
 
 
 def get_all_models_with_status() -> List[tuple[ModelInfo, DownloadStatus]]:
@@ -117,17 +138,34 @@ def get_all_models_with_status() -> List[tuple[ModelInfo, DownloadStatus]]:
 def get_installed_asr_models() -> List[str]:
     models_dir = get_models_dir()
 
-    if not os.path.exists(models_dir):
-        return []
+    names: set[str] = set()
+    if os.path.exists(models_dir):
+        for name in os.listdir(models_dir):
+            full = os.path.join(models_dir, name)
+            if os.path.isdir(full) and is_valid_model_dir(full):
+                names.add(name)
 
-    models = [
-        name
-        for name in os.listdir(models_dir)
-        if os.path.isdir(os.path.join(models_dir, name))
-        and is_valid_model_dir(os.path.join(models_dir, name))
-    ]
-    models.sort()
-    return models
+    # Bundled (offline-installer) models are "installed" even though they live
+    # in read-only install resources rather than the user cache.
+    for model in AVAILABLE_MODELS:
+        if is_bundled(model.id):
+            names.add(model.id)
+
+    return sorted(names)
+
+
+def resolve_model_location(model_id: str) -> str | None:
+    """Return the directory a model should be loaded from, or None.
+
+    Prefers a valid per-user cache copy (e.g. a model the user downloaded),
+    then falls back to the bundled offline-installer copy. Bundled models are
+    loaded in place; they are never copied into the cache.
+    """
+    models_dir = get_models_dir()
+    cache_path = os.path.join(models_dir, model_id)
+    if os.path.isdir(cache_path) and is_valid_model_dir(cache_path):
+        return cache_path
+    return resolve_bundled_model_dir(model_id)
 
 
 def delete_asr_model(model_name: str) -> tuple[bool, str]:

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from ...core.asr.models.registry import (
     delete_asr_model,
     get_all_models_with_status,
+    get_model_download_status,
     is_model_downloaded,
 )
 from ...core.audio import AudioRecorder
@@ -35,6 +36,9 @@ from ..download_dialog import ModelDownloadThread
 class ConfigurationTab(QWidget):
 
     reset_requested = Signal()
+    # Emitted (with "left"/"right") when the user changes the Notes dock side,
+    # so a live Notes panel can re-dock immediately.
+    notes_dock_changed = Signal(str)
 
     def __init__(self, settings: Settings, parent=None):
         super().__init__(parent)
@@ -58,6 +62,7 @@ class ConfigurationTab(QWidget):
         layout.setSpacing(12)
 
         layout.addWidget(self._create_general_section())
+        layout.addWidget(self._create_notes_section())
         layout.addWidget(self._create_audio_section())
         layout.addWidget(self._create_hotkey_section())
         layout.addWidget(self._create_correction_section())
@@ -261,6 +266,94 @@ class ConfigurationTab(QWidget):
 
         layout.addWidget(group)
         return widget
+
+    def _create_notes_section(self) -> QWidget:
+        """Notes panel preferences (v0.2.0): which edge the panel docks to."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        notes_group = QGroupBox("Notes panel")
+        notes_layout = QFormLayout(notes_group)
+
+        self._notes_dock_combo = QComboBox()
+        self._notes_dock_combo.addItem("Right (default)", "right")
+        self._notes_dock_combo.addItem("Left", "left")
+        current = getattr(self._settings, "notes_dock_side", "right")
+        idx = self._notes_dock_combo.findData(
+            current if current in ("left", "right") else "right"
+        )
+        self._notes_dock_combo.setCurrentIndex(max(0, idx))
+        self._notes_dock_combo.currentIndexChanged.connect(self._on_notes_dock_changed)
+        notes_layout.addRow("Dock side:", self._notes_dock_combo)
+
+        hint = QLabel(
+            "The standalone Notes panel docks to this screen edge. Notes are "
+            "stored locally and never leave your machine."
+        )
+        hint.setStyleSheet("color: gray; font-size: 11px;")
+        hint.setWordWrap(True)
+        notes_layout.addRow(hint)
+
+        # Assistant conversation retention (v0.2.0). Separate, explicit opt-in
+        # from transcript history; OFF by default.
+        self._conversation_history_cb = QCheckBox("Save assistant conversation history")
+        notes_layout.addRow(self._conversation_history_cb)
+        conv_hint = QLabel(
+            "Save conversations and their task context across restarts. When "
+            "disabled, conversation history is kept in memory only and is not "
+            "persisted. This is independent of transcript history. Executed "
+            "actions and credentials are never stored."
+        )
+        conv_hint.setStyleSheet("color: gray; font-size: 11px;")
+        conv_hint.setWordWrap(True)
+        notes_layout.addRow(conv_hint)
+
+        self._clear_conversation_btn = QPushButton("Clear saved conversations")
+        self._clear_conversation_btn.setToolTip(
+            "Delete the stored assistant conversation file. Notes and settings "
+            "are not affected."
+        )
+        self._clear_conversation_btn.clicked.connect(self._on_clear_conversation_history)
+        notes_layout.addRow(self._clear_conversation_btn)
+
+        reminders_group = QGroupBox("Reminders")
+        reminders_layout = QVBoxLayout(reminders_group)
+        reminders_hint = QLabel(
+            "Scheduled reminders fire as desktop notifications while SayIt is "
+            "running. SayIt does not run a background service, so if it is closed "
+            "when a reminder is due, you are notified at the next launch. Reminders "
+            "are stored locally and independently of conversation history."
+        )
+        reminders_hint.setStyleSheet("color: gray; font-size: 11px;")
+        reminders_hint.setWordWrap(True)
+        reminders_layout.addWidget(reminders_hint)
+
+        layout.addWidget(notes_group)
+        layout.addWidget(reminders_group)
+        return widget
+
+    def _on_clear_conversation_history(self) -> None:
+        """Delete ONLY the stored assistant conversation file (not notes/settings)."""
+        from ...core.conversation import ConversationStore
+
+        try:
+            ConversationStore(enabled=True).clear()
+            QMessageBox.information(
+                self, "Cleared", "Saved assistant conversations were removed."
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            QMessageBox.warning(self, "Clear failed", f"Could not clear conversations: {e}")
+
+    def _on_notes_dock_changed(self, index: int) -> None:
+        side = self._notes_dock_combo.currentData()
+        if side not in ("left", "right"):
+            side = "right"
+        self._settings.notes_dock_side = side
+        try:
+            self._settings.save()
+        except OSError:
+            pass
+        self.notes_dock_changed.emit(side)
 
     def _on_override_changed(self, index: int) -> None:
         token = self._context_override_combo.currentData()
@@ -634,7 +727,14 @@ class ConfigurationTab(QWidget):
         self._model_combo.clear()
 
         for model, status in get_all_models_with_status():
-            indicator = "✓" if status == "downloaded" else "↓"
+            # Distinguish bundled (shipped by the offline installer, available
+            # with no download) from cache-downloaded and not-present.
+            if status == "downloaded":
+                indicator = "✓"
+            elif status == "bundled":
+                indicator = "◆ bundled"
+            else:
+                indicator = "↓"
             display_text = f"{model.name}  {indicator}"
             self._model_combo.addItem(display_text, model.id)
 
@@ -651,14 +751,26 @@ class ConfigurationTab(QWidget):
     def _update_button_states(self) -> None:
         current_data = self._model_combo.currentData()
         is_active_model = current_data == self._settings.model_id
-        downloaded = is_model_downloaded(current_data) if current_data else True
+        status = (
+            get_model_download_status(current_data) if current_data else "downloaded"
+        )
+        downloaded = status != "not_downloaded"
+        in_cache = status == "downloaded"
 
-        self._delete_model_btn.setEnabled(not is_active_model and downloaded)
+        # Delete only makes sense for a model physically present in the user
+        # cache. A bundled (offline-installer) model lives in read-only install
+        # resources and is removed with the app, not from the UI.
+        self._delete_model_btn.setEnabled(not is_active_model and in_cache)
         if is_active_model:
             self._delete_model_btn.setToolTip("Cannot delete currently active model")
+        elif status == "bundled":
+            self._delete_model_btn.setToolTip(
+                "Bundled with the offline installer; cannot be deleted here"
+            )
         else:
             self._delete_model_btn.setToolTip("Delete selected model from cache")
 
+        # Nothing to download when already downloaded OR bundled.
         self._download_btn.setEnabled(not downloaded)
 
     def _on_model_combo_changed(self, index: int) -> None:
@@ -823,6 +935,13 @@ class ConfigurationTab(QWidget):
             self._settings.structured_formatting_enabled
         )
 
+        # v0.2.0 assistant conversation retention (reflects the persisted value;
+        # independent of transcript history_enabled).
+        if hasattr(self, "_conversation_history_cb"):
+            self._conversation_history_cb.setChecked(
+                getattr(self._settings, "conversation_history_enabled", False)
+            )
+
         # Phase 8A context controls.
         self._context_detection_cb.setChecked(self._settings.context_detection_enabled)
         override_token = self._settings.context_override or AUTO
@@ -897,6 +1016,13 @@ class ConfigurationTab(QWidget):
         self._settings.structured_formatting_enabled = (
             self._structured_formatting_cb.isChecked()
         )
+
+        # v0.2.0 assistant conversation retention. Written independently of the
+        # transcript history_enabled setting; neither one toggles the other.
+        if hasattr(self, "_conversation_history_cb"):
+            self._settings.conversation_history_enabled = (
+                self._conversation_history_cb.isChecked()
+            )
 
         # Phase 8A context controls.
         self._settings.context_detection_enabled = (

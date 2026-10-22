@@ -214,9 +214,16 @@ uv run python -m sayit
 
 | Platform | Status |
 |---|---|
-| Windows x64 | Tested and launched release target; packaged install + live dictation validated. |
-| Linux x64 | AppImage build target; less validated. Hotkey capture may require X11; clipboard needs `xclip`. |
-| macOS | Not targeted. |
+| Windows x64 | Supported. Packaged install + live dictation validated; both installers built and checksummed. |
+| macOS 12+ (Apple Silicon / Intel) | Cross-platform engineering implemented (native per-arch `.app`/DMG config, Cmd+V insertion, mic + Accessibility permission diagnostics). **Build + live validation pending a macOS runner; DMGs are UNSIGNED until Apple Developer credentials are supplied.** |
+| Linux x86_64 (X11) | Supported. AppImage build target; pynput global hotkey + `xclip`/`xsel` clipboard. |
+| Linux x86_64 (Wayland) | Implemented via the GlobalShortcuts portal with `wl-clipboard`; when the compositor lacks portal/synthetic-input support, SayIt leaves the transcript on the clipboard and tells you to paste. **Per-compositor live validation pending.** |
+| Linux ARM64 | Experimental; not validated this milestone. |
+
+macOS global hotkey and desktop-wide text insertion require **Accessibility /
+Input Monitoring** permission; microphone capture requires the microphone
+permission. SayIt surfaces actionable guidance when a permission is missing and
+never claims to be listening when the OS has denied access.
 
 GPU acceleration (NVIDIA/AMD/Intel) is **experimental research only** and not a
 supported production backend.

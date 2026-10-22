@@ -7,9 +7,9 @@ import ctypes.util
 import sys
 from pathlib import Path
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"
 
-# Technical identifier — used for data/config directory names, the autostart
+# Technical identifier â€” used for data/config directory names, the autostart
 # registry key, QApplication.setApplicationName, and logging. MUST remain
 # "SayIt" so existing installations, settings, and autostart entries keep
 # working. Do not change this without a dedicated migration.

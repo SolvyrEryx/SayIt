@@ -27,6 +27,10 @@ class SystemTray(QObject):
 
     settings_requested = Signal()
     quit_requested = Signal()
+    notes_requested = Signal()
+    voice_widget_requested = Signal()
+    assistant_requested = Signal()
+    reminders_requested = Signal()
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -45,6 +49,24 @@ class SystemTray(QObject):
         self._status_action = QAction("Loading...", self._menu)
         self._status_action.setEnabled(False)
         self._menu.addAction(self._status_action)
+
+        self._menu.addSeparator()
+
+        notes_action = QAction("Notes", self._menu)
+        notes_action.triggered.connect(self.notes_requested.emit)
+        self._menu.addAction(notes_action)
+
+        voice_widget_action = QAction("Voice Widget", self._menu)
+        voice_widget_action.triggered.connect(self.voice_widget_requested.emit)
+        self._menu.addAction(voice_widget_action)
+
+        assistant_action = QAction("Assistant", self._menu)
+        assistant_action.triggered.connect(self.assistant_requested.emit)
+        self._menu.addAction(assistant_action)
+
+        reminders_action = QAction("Reminders", self._menu)
+        reminders_action.triggered.connect(self.reminders_requested.emit)
+        self._menu.addAction(reminders_action)
 
         self._menu.addSeparator()
 
@@ -121,7 +143,9 @@ class SystemTray(QObject):
 
         if self._tray_icon:
             self._tray_icon.setIcon(icon)
-            self._tray_icon.setToolTip(status_tooltips.get(self._status, __display_name__))
+            self._tray_icon.setToolTip(
+                status_tooltips.get(self._status, __display_name__)
+            )
 
     def hide(self) -> None:
         if self._tray_icon:

@@ -1,13 +1,22 @@
 """
 Hotkey listener for global keyboard shortcuts.
 
-Uses pynput for Windows and Linux.
+Backend selection is delegated to the platform capability layer:
+- Windows / macOS / Linux-X11: pynput.
+- Linux-Wayland: the GlobalShortcuts portal backend (see hotkey_wayland); when
+  unavailable the listener reports an actionable limitation rather than silently
+  switching keys or pretending to listen.
+
+macOS additionally requires Accessibility / Input-Monitoring permission for the
+global listener to receive keys; pynput exposes ``IS_TRUSTED`` which we surface
+so the app/setup wizard can guide the user instead of appearing "ready".
 """
 
 from typing import Optional, Set
 
 from PySide6.QtCore import QObject, Signal
 
+from ...utils import capabilities as caps
 from ...utils.logger import get_logger
 from ..settings.settings import Settings, get_settings
 
@@ -61,11 +70,18 @@ class HotkeyListener(QObject):
     hotkey_pressed = Signal()
     hotkey_released = Signal()
     cancel_requested = Signal()
+    # Emitted with an actionable message when the global hotkey cannot be
+    # registered on this OS/session (e.g. Wayland without portal support, or
+    # macOS Accessibility not granted). The app surfaces this; it never means
+    # the hotkey silently changed.
+    backend_unavailable = Signal(str)
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
 
         self._is_hotkey_active = False
+        self._backend = caps.hotkey_backend()
+        self._last_status: str = ""
 
         settings = get_settings()
         self._setup_hotkey(settings)
@@ -73,6 +89,46 @@ class HotkeyListener(QObject):
         # Do not initialize the OS keyboard backend during application construction.
         # Linux Wayland/headless environments may not expose an X connection.
         self._impl: Optional[_PynputHotkeyListenerImpl] = None
+        self._wayland_portal = None  # lazily created WaylandPortalHotkey
+
+    def _try_start_wayland_portal(self) -> bool:
+        """Attempt the Wayland GlobalShortcuts portal backend.
+
+        The portal's Activated/Deactivated signals drive the SAME press/release
+        state machine as every other backend (no second state machine). Returns
+        True when registration succeeded, else False (caller falls back).
+        """
+        try:
+            from .hotkey_wayland import WaylandPortalHotkey
+        except Exception as e:  # pragma: no cover
+            logger.warning("Wayland portal backend import failed: %s", e)
+            return False
+        if self._wayland_portal is None:
+            self._wayland_portal = WaylandPortalHotkey(
+                on_pressed=self._on_hotkey_pressed,
+                on_released=self._on_hotkey_released,
+            )
+        return self._wayland_portal.start()
+
+    @property
+    def backend(self) -> str:
+        """The selected hotkey backend token ('pynput'|'wayland_portal'|'none')."""
+        return self._backend.value
+
+    @property
+    def last_status(self) -> str:
+        """Most recent human-readable backend/permission status message."""
+        return self._last_status
+
+    def accessibility_trusted(self) -> Optional[bool]:
+        """macOS Accessibility/Input-Monitoring trust, if known.
+
+        Returns True/False once a pynput listener exists and exposes
+        ``IS_TRUSTED`` (macOS), None otherwise (not macOS, or not yet started).
+        """
+        if self._impl is None:
+            return None
+        return self._impl.is_trusted
 
     def update_settings(self, settings: Settings) -> None:
         """Replace the active hotkey registration with the newly saved config.
@@ -107,20 +163,64 @@ class HotkeyListener(QObject):
         self._trigger_key = settings.hotkey.key
 
     def start(self) -> None:
+        # Wayland: pynput cannot receive global keys; the GlobalShortcuts portal
+        # backend is the supported path. Attempt it; only if the portal is
+        # unavailable do we report an actionable limitation (never pretend to
+        # listen, never silently switch keys).
+        if self._backend is caps.HotkeyBackend.WAYLAND_PORTAL:
+            if self._try_start_wayland_portal():
+                self._last_status = "Global hotkey active (Wayland portal)."
+                return
+            msg = self._wayland_portal.last_reason if self._wayland_portal else (
+                "Global hotkey on Wayland requires the desktop GlobalShortcuts "
+                "portal."
+            )
+            msg = (
+                msg
+                + " Use the Voice Widget's Record button instead."
+            )
+            self._last_status = msg
+            logger.warning(msg)
+            self.backend_unavailable.emit(msg)
+            return
+        if self._backend is caps.HotkeyBackend.NONE:
+            msg = "No supported global-hotkey backend on this platform."
+            self._last_status = msg
+            logger.warning(msg)
+            self.backend_unavailable.emit(msg)
+            return
+
         if self._impl is None:
             try:
                 self._impl = _PynputHotkeyListenerImpl(self)
             except ImportError as exc:
-                logger.warning(
-                    "Global hotkeys are unavailable on this Linux session: %s",
-                    exc,
-                )
+                msg = f"Global hotkeys unavailable (pynput backend): {exc}"
+                self._last_status = msg
+                logger.warning(msg)
+                self.backend_unavailable.emit(msg)
                 return
         self._impl.start()
+
+        # macOS: surface Accessibility/Input-Monitoring trust so the app can
+        # guide the user. A NOT-trusted listener will not receive keys.
+        trusted = self._impl.is_trusted
+        if trusted is False:
+            msg = caps.accessibility_permission().reason
+            self._last_status = msg
+            logger.warning(
+                "Hotkey listener is NOT trusted (macOS Accessibility/Input "
+                "Monitoring not granted): %s",
+                msg,
+            )
+            self.backend_unavailable.emit(msg)
+        elif trusted is True:
+            self._last_status = "Global hotkey active."
 
     def stop(self) -> None:
         if self._impl is not None:
             self._impl.stop()
+        if self._wayland_portal is not None:
+            self._wayland_portal.stop()
 
     def _on_hotkey_pressed(self) -> None:
         if not self._is_hotkey_active:
@@ -242,6 +342,20 @@ class _PynputHotkeyListenerImpl:
             self._keyboard_listener is not None
             and self._keyboard_listener.is_alive()
         )
+
+    @property
+    def is_trusted(self) -> Optional[bool]:
+        """macOS pynput ``IS_TRUSTED`` once the listener exists; else None.
+
+        True/False on macOS when Accessibility/Input-Monitoring is granted/denied.
+        None on platforms where the attribute is absent (Windows/Linux) or before
+        the listener has started.
+        """
+        listener = self._keyboard_listener
+        if listener is None:
+            return None
+        val = getattr(listener, "IS_TRUSTED", None)
+        return bool(val) if val is not None else None
 
     def start(self) -> None:
         from pynput import keyboard

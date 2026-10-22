@@ -18,16 +18,71 @@ type CenterState =
   | { kind: "ready"; manifest: ReleaseManifest };
 
 const PLATFORM_META: Record<PlatformKey, { name: string; formatLabel: string }> = {
-  windows: { name: "Windows", formatLabel: "Installer (.exe)" },
-  linux: { name: "Linux", formatLabel: "AppImage" },
+  windows: { name: "Windows — Full Offline Installer", formatLabel: "Installer (.exe) · all models included" },
+  windows_ondemand: { name: "Windows — Smaller Installer", formatLabel: "Installer (.exe) · downloads models on first use" },
+  macos_arm64: { name: "macOS (Apple Silicon) — Full Offline", formatLabel: "DMG · arm64 · all models included · macOS 12+" },
+  macos_arm64_ondemand: { name: "macOS (Apple Silicon) — Smaller", formatLabel: "DMG · arm64 · downloads models on first use · macOS 12+" },
+  macos_intel: { name: "macOS (Intel) — Full Offline", formatLabel: "DMG · x86_64 · all models included · macOS 12+" },
+  macos_intel_ondemand: { name: "macOS (Intel) — Smaller", formatLabel: "DMG · x86_64 · downloads models on first use · macOS 12+" },
+  linux: { name: "Linux", formatLabel: "AppImage · x86_64" },
 };
+
+const WINDOWS_KEYS: PlatformKey[] = ["windows", "windows_ondemand"];
+const MACOS_KEYS: PlatformKey[] = [
+  // Apple Silicon first (most common today); browser arch detection is
+  // unreliable, so both arches are always offered — the user chooses.
+  "macos_arm64",
+  "macos_arm64_ondemand",
+  "macos_intel",
+  "macos_intel_ondemand",
+];
+const LINUX_KEYS: PlatformKey[] = ["linux"];
 
 const subscribeNoop = () => () => {};
 const getServerPlatform = (): Platform => "unknown";
 
-function orderedKeys(detected: Platform): PlatformKey[] {
-  if (detected === "linux") return ["linux", "windows"];
-  return ["windows", "linux"];
+/**
+ * Card order. The detected OS group comes first; the others follow. Within a
+ * group, Full Offline precedes the smaller variant. Only keys actually present
+ * in the manifest are shown (``available``). macOS always offers both arches
+ * since the browser cannot reliably distinguish Apple Silicon from Intel.
+ */
+function orderedKeys(detected: Platform, available: Set<PlatformKey>): PlatformKey[] {
+  const present = (keys: PlatformKey[]) => keys.filter((k) => available.has(k));
+  let windows = present(WINDOWS_KEYS);
+  const macos = present(MACOS_KEYS);
+  const linux = present(LINUX_KEYS);
+  // Fallback cards (no manifest): show one headline card per OS.
+  if (windows.length === 0 && macos.length === 0 && linux.length === 0) {
+    windows = ["windows"];
+    return detected === "linux"
+      ? ["linux", "windows"]
+      : detected === "macos"
+        ? ["macos_arm64", "windows", "linux"]
+        : ["windows", "linux"];
+  }
+  if (detected === "macos") return dedupe([...macos, ...windows, ...linux, "macos_arm64"]);
+  if (detected === "linux") return dedupe([...linux, ...windows, ...macos, "linux"]);
+  if (detected === "windows") return dedupe([...windows, ...macos, ...linux, "windows"]);
+  return dedupe([...windows, ...macos, ...linux]);
+}
+
+function dedupe(keys: PlatformKey[]): PlatformKey[] {
+  const seen = new Set<PlatformKey>();
+  const out: PlatformKey[] = [];
+  for (const k of keys) {
+    if (!seen.has(k)) {
+      seen.add(k);
+      out.push(k);
+    }
+  }
+  return out;
+}
+
+function osForKey(key: PlatformKey): Platform {
+  if (key.startsWith("windows")) return "windows";
+  if (key.startsWith("macos")) return "macos";
+  return "linux";
 }
 
 /**
@@ -151,13 +206,13 @@ export function DownloadCenter({ platform: platformOverride }: { platform?: Plat
           )}
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            {orderedKeys(detected).map((key) => (
+            {orderedKeys(detected, new Set<PlatformKey>()).map((key) => (
               <DownloadCard
                 key={key}
                 platformName={PLATFORM_META[key].name}
                 formatLabel={PLATFORM_META[key].formatLabel}
                 status={state.reason === "missing" ? "planned" : "unavailable"}
-                detected={detected === key}
+                detected={detected === osForKey(key)}
                 githubUrl={site.releasesUrl}
                 installHref="/install"
               />
@@ -177,7 +232,10 @@ export function DownloadCenter({ platform: platformOverride }: { platform?: Plat
           </div>
 
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            {orderedKeys(detected).map((key) => {
+            {orderedKeys(
+              detected,
+              new Set<PlatformKey>(Object.keys(state.manifest.platforms) as PlatformKey[]),
+            ).map((key) => {
               const asset = state.manifest.platforms[key];
               return (
                 <DownloadCard
@@ -185,7 +243,7 @@ export function DownloadCenter({ platform: platformOverride }: { platform?: Plat
                   platformName={PLATFORM_META[key].name}
                   formatLabel={PLATFORM_META[key].formatLabel}
                   status={asset ? "available" : "unavailable"}
-                  detected={detected === key}
+                  detected={detected === osForKey(key)}
                   architecture={asset?.architecture}
                   version={`v${state.manifest.version}`}
                   releaseDate={state.manifest.release_date}

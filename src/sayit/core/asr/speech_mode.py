@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from .models.registry import is_model_downloaded
+from .models.registry import get_model_download_status, is_model_downloaded
 
 # Concrete model ids (must match models.json / registry).
 FAST_MODEL_ID = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
@@ -32,29 +32,36 @@ DEFAULT_MODE = FAST
 
 @dataclass(frozen=True)
 class SpeechMode:
-    mode: str                 # "fast" | "higher_accuracy"
+    mode: str  # "fast" | "higher_accuracy"
     model_id: str
-    label: str                # user-facing short label
-    tagline: str              # one-line trade-off description
-    tradeoff: str             # longer trade-off note
-    status_prefix: str        # subtle status, e.g. "Fast" / "Higher Accuracy"
-    optional: bool            # requires explicit opt-in + possible download
+    label: str  # user-facing short label
+    tagline: str  # one-line trade-off description
+    tradeoff: str  # longer trade-off note
+    status_prefix: str  # subtle status, e.g. "Fast" / "Higher Accuracy"
+    optional: bool  # requires explicit opt-in + possible download
 
 
 _MODES: Dict[str, SpeechMode] = {
     FAST: SpeechMode(
-        mode=FAST, model_id=FAST_MODEL_ID, label="Fast",
+        mode=FAST,
+        model_id=FAST_MODEL_ID,
+        label="Fast",
         tagline="Fast local dictation",
         tradeoff="Fastest response. The default for everyday dictation.",
-        status_prefix="Fast", optional=False,
+        status_prefix="Fast",
+        optional=False,
     ),
     HIGHER_ACCURACY: SpeechMode(
-        mode=HIGHER_ACCURACY, model_id=HIGHER_ACCURACY_MODEL_ID,
+        mode=HIGHER_ACCURACY,
+        model_id=HIGHER_ACCURACY_MODEL_ID,
         label="Higher Accuracy",
         tagline="Higher technical recall in SayIt's measured evaluation",
-        tradeoff=("Stronger technical-term recognition in SayIt's measured TIE "
-                  "evaluation, but noticeably slower transcription (~4x). Optional."),
-        status_prefix="Higher Accuracy", optional=True,
+        tradeoff=(
+            "Stronger technical-term recognition in SayIt's measured TIE "
+            "evaluation, but noticeably slower transcription (~4x). Optional."
+        ),
+        status_prefix="Higher Accuracy",
+        optional=True,
     ),
 }
 
@@ -95,9 +102,21 @@ def is_mode_available(mode: str) -> bool:
 
 
 def mode_status(mode: str) -> str:
-    """UI status token: 'Installed'/'Ready'/'Not installed'."""
+    """UI status token: 'Bundled'/'Installed'/'Ready'/'Not installed'.
+
+    A model shipped by the Full Offline Installer reports 'Bundled' (available
+    with no download, loaded from install resources). A model present in the
+    per-user cache reports 'Installed' (default mode) or 'Ready' (optional
+    mode). Otherwise 'Not installed'.
+    """
     m = get_mode(mode)
-    if is_mode_available(mode):
+    try:
+        status = get_model_download_status(model_id_for_mode(mode))
+    except Exception:
+        status = "not_downloaded"
+    if status == "bundled":
+        return "Bundled (offline installer)"
+    if status == "downloaded":
         return "Ready" if m.optional else "Installed"
     return "Not installed"
 

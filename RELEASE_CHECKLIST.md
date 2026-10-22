@@ -95,3 +95,102 @@ run **later**; items marked pending reflect what has not yet been validated.
 - [ ] README matches shipped behavior.
 - [ ] CHANGELOG updated for the release.
 - [ ] Real screenshots/demo captured from the actual UI (not fabricated).
+
+---
+
+## CI release configuration — secrets, permissions, and macOS signing (v0.2.0+)
+
+This section documents what the GitHub Actions release pipeline
+(`.github/workflows/build.yml`) requires. It is reference documentation for the
+maintainer configuring the repository; **no secret values are shown here, and
+none must ever be committed, printed, or logged.**
+
+### Required GitHub Actions secrets (macOS signing + notarization)
+
+Configure these under **Repository → Settings → Secrets and variables →
+Actions → Repository secrets**. They are consumed only by the `build-macos`
+job. The workflow reads each via `${{ secrets.<NAME> }}`; it never echoes a
+value (the notary key is written to a `mktemp` file with `umask 077` and
+removed on exit).
+
+| Secret | Purpose | How it is used |
+|--------|---------|----------------|
+| `MACOS_SIGN_IDENTITY` | The *Developer ID Application* signing identity (e.g. the certificate common name or its SHA-1 hash) used to code-sign the `.app`/DMG. | Passed to the build as `SAYIT_MACOS_SIGN_IDENTITY`; `scripts/build.py` forwards it to `briefcase package macOS app --identity <id>`. When absent, the build is `--no-sign` (unsigned/ad-hoc, explicitly reported). |
+| `MACOS_NOTARY_API_KEY` | The **contents** of the App Store Connect API key file `AuthKey_<KEYID>.p8` (the full PEM text, not a path). | Written to a temporary `.p8` file (restrictive perms, deleted on exit) and passed to `xcrun notarytool submit --key`. |
+| `MACOS_NOTARY_API_KEY_ID` | The App Store Connect API **Key ID** (the `<KEYID>` portion of the key filename). | Passed to `xcrun notarytool submit --key-id`. |
+| `MACOS_NOTARY_API_ISSUER` | The App Store Connect API **Issuer ID** (a UUID from the API Keys page). | Passed to `xcrun notarytool submit --issuer`. |
+
+Notes:
+- The three notary secrets are required **together**. The workflow treats
+  notary credentials as present only when `MACOS_NOTARY_API_KEY`,
+  `MACOS_NOTARY_API_KEY_ID`, and `MACOS_NOTARY_API_ISSUER` are all non-empty.
+- These secrets are needed **only for a public macOS release** (a `v*` tag).
+  Branch/PR/manual builds may run without them and produce clearly-labelled
+  `unsigned-dev` development DMGs that the release job refuses to publish.
+
+### Required GitHub Actions permission (release job)
+
+- The `release` job declares `permissions: { contents: write }`. This scopes
+  write access to the single job that creates the GitHub Release and uploads
+  assets (`softprops/action-gh-release`); the build/test jobs run with default
+  read-only token permissions. Do not widen this scope. If the repository or
+  org default workflow permissions are set to read-only, this per-job
+  `contents: write` grant is what allows the release to be published.
+
+### Configuring and validating the Apple credentials (without exposing values)
+
+1. In the Apple Developer account, create/export a **Developer ID Application**
+   certificate and note its identity string — this becomes
+   `MACOS_SIGN_IDENTITY`.
+2. In **App Store Connect → Users and Access → Integrations → App Store Connect
+   API**, create an API key with the **Developer** role. Download the
+   `AuthKey_<KEYID>.p8` **once** (it cannot be re-downloaded). Record the
+   **Key ID** and the page's **Issuer ID**.
+3. Add the four values as repository secrets (names above). For
+   `MACOS_NOTARY_API_KEY`, paste the entire contents of the `.p8` file.
+4. Validate **without printing values**:
+   - In the Actions UI, confirm the `Determine release/signing context` step
+     reports `have_sign=true` / `have_notary=true` on a tagged build (it only
+     emits booleans, never the values).
+   - A tagged build with any required secret missing **fails fast** at that
+     step, before the long build, with an explicit error — this is the
+     intended guard, not a bug.
+   - Keep the local `.p8` file out of the repository; it is already covered by
+     the ignore rules for keys/secrets. Rotate the key if it is ever exposed.
+
+### macOS release gate — sign → notarize → staple → Gatekeeper
+
+A public macOS release (tagged `v*`) **must pass all four** of the following,
+enforced by the `build-macos` and `release` jobs:
+
+1. **Signing** — the `.app`/DMG is signed with the Developer ID identity
+   (`MACOS_SIGN_IDENTITY`). An unsigned DMG is a development artifact only.
+2. **Notarization** — `xcrun notarytool submit --wait` uploads each DMG and
+   waits for Apple's verdict; a rejection fails the job.
+3. **Stapling** — `xcrun stapler staple` attaches the notarization ticket so
+   validation works offline; `xcrun stapler validate` must pass.
+4. **Gatekeeper assessment** — `spctl --assess --type open
+   --context context:primary-signature -vv` must accept the DMG.
+
+The `release` job additionally refuses to publish if any DMG is present but a
+`SIGNING_STATUS-*.txt` marker reads `unsigned-dev`, or if a DMG is present with
+no marker at all. A Windows/Linux-only release (no DMG) is allowed and skips
+this macOS guard.
+
+### Native validation status (not yet run)
+
+As of this document, the native macOS (`macos-14` arm64 + `macos-13` x86_64)
+and Linux (`ubuntu-latest` AppImage) build/package/validate jobs have **not**
+been executed on GitHub-hosted runners for v0.2.0. The workflow, gates, and
+local static checks (Python test suite, website `npm run check`, build-isolation
+and installer-AUMID regression tests) pass, but:
+
+- [ ] `build-macos` (arm64) — build, native-arch check, sign/notarize/staple/
+      Gatekeeper, upload — **not yet run on a macOS runner**.
+- [ ] `build-macos` (x86_64) — same — **not yet run on a macOS runner**.
+- [ ] `build-linux-x64` — AppImage build, smoke test, size/ELF/name validation,
+      checksum, upload — **not yet run on a Linux runner**.
+
+Do not mark these as passed, and do not describe macOS/Linux as
+release-validated, until the corresponding GitHub Actions jobs have completed
+successfully.

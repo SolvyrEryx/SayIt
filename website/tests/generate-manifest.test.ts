@@ -11,7 +11,7 @@ import { validateReleaseManifest } from "@/lib/release";
 // dynamically so the site's TypeScript toolchain doesn't need to type it.
 const { generateReleaseManifest, stripTagPrefix, toReleaseDate } = (await import(
   "../scripts/generate-manifest.mjs"
-)) as {
+)) as unknown as {
   generateReleaseManifest: (options: {
     tag: string;
     repo: string;
@@ -192,5 +192,241 @@ describe("manifest helper functions", () => {
     expect(toReleaseDate("2026-10-05")).toBe("2026-10-05");
     expect(toReleaseDate(undefined)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(() => toReleaseDate("October 3rd")).toThrow(/Unrecognized release date/);
+  });
+});
+
+const FAKE_OFFLINE = "fake offline installer bytes — much larger in reality";
+
+async function writeDualFixtures(dir: string) {
+  await writeArtifact(dir, "SayIt-Setup-x64-Offline.exe", FAKE_OFFLINE);
+  await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+  await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+}
+
+describe("dual Windows installers (v0.2.0)", () => {
+  it("emits windows=offline (primary, models) + windows_ondemand=smaller + linux", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeDualFixtures(dir);
+
+    const { manifest } = await generateReleaseManifest({
+      tag: "v0.2.0",
+      repo: "VptrCipher/SayIt",
+      releaseDate: "2026-10-17",
+      releaseFilesDir: dir,
+      outDir: out,
+    });
+
+    expect(validateReleaseManifest(manifest)).toEqual(manifest);
+
+    const win = manifest.platforms.windows as Record<string, unknown>;
+    const ond = manifest.platforms.windows_ondemand as Record<string, unknown>;
+    const linux = manifest.platforms.linux as Record<string, unknown>;
+
+    expect(win.url).toContain("SayIt-Setup-x64-Offline.exe");
+    expect(win.variant).toBe("offline");
+    expect(win.bundles_models).toBe(true);
+    expect(Array.isArray(win.models)).toBe(true);
+    expect((win.models as unknown[]).length).toBe(4);
+
+    expect(ond.url).toContain("SayIt-Setup-x64.exe");
+    expect(ond.variant).toBe("ondemand");
+    expect(ond.bundles_models).toBe(false);
+    expect(ond.models).toBeUndefined();
+
+    expect(linux.url).toContain("Linux-x86_64.AppImage");
+
+    // The offline fixture is larger than the smaller fixture here.
+    expect(win.size_bytes).toBeGreaterThan(ond.size_bytes as number);
+  });
+
+  it("offline-only release puts the offline installer in the windows slot", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeArtifact(dir, "SayIt-Setup-x64-Offline.exe", FAKE_OFFLINE);
+    await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+
+    const { manifest } = await generateReleaseManifest({
+      tag: "v0.2.0",
+      repo: "VptrCipher/SayIt",
+      releaseFilesDir: dir,
+      outDir: out,
+    });
+    const win = manifest.platforms.windows as Record<string, unknown>;
+    expect(win.variant).toBe("offline");
+    expect(manifest.platforms.windows_ondemand).toBeUndefined();
+  });
+
+  it("smaller-only release stays backward compatible (windows=ondemand)", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+    await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+
+    const { manifest } = await generateReleaseManifest({
+      tag: "v0.2.0",
+      repo: "VptrCipher/SayIt",
+      releaseFilesDir: dir,
+      outDir: out,
+    });
+    const win = manifest.platforms.windows as Record<string, unknown>;
+    expect(win.url).toContain("SayIt-Setup-x64.exe");
+    expect(win.variant).toBe("ondemand");
+    expect(win.bundles_models).toBe(false);
+    expect(manifest.platforms.windows_ondemand).toBeUndefined();
+  });
+
+  it("fails when no .exe is present", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+    await expect(
+      generateReleaseManifest({ tag: "v0.2.0", repo: "VptrCipher/SayIt", releaseFilesDir: dir, outDir: out }),
+    ).rejects.toThrow(/\.exe artifact missing/i);
+  });
+
+  it("fails when the Linux AppImage is missing even if both exes exist", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeArtifact(dir, "SayIt-Setup-x64-Offline.exe", FAKE_OFFLINE);
+    await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+    await expect(
+      generateReleaseManifest({ tag: "v0.2.0", repo: "VptrCipher/SayIt", releaseFilesDir: dir, outDir: out }),
+    ).rejects.toThrow(/appimage artifact missing/i);
+  });
+
+  it("fails on ambiguous (duplicate) smaller installers", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+    await writeArtifact(dir, "SayIt-Setup-x64-alt.exe", FAKE_EXE + "2");
+    await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+    await expect(
+      generateReleaseManifest({ tag: "v0.2.0", repo: "VptrCipher/SayIt", releaseFilesDir: dir, outDir: out }),
+    ).rejects.toThrow(/Ambiguous smaller installers/i);
+  });
+
+  it("fails on ambiguous (duplicate) offline installers", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeArtifact(dir, "SayIt-Setup-x64-Offline.exe", FAKE_OFFLINE);
+    await writeArtifact(dir, "SayIt-Setup-arm64-Offline.exe", FAKE_OFFLINE + "2");
+    await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+    await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+    await expect(
+      generateReleaseManifest({ tag: "v0.2.0", repo: "VptrCipher/SayIt", releaseFilesDir: dir, outDir: out }),
+    ).rejects.toThrow(/Ambiguous Full Offline installers/i);
+  });
+
+  it("fails when either installer mismatches its checksum sidecar", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeArtifact(dir, "SayIt-Setup-x64-Offline.exe", FAKE_OFFLINE, false);
+    await writeFile(join(dir, "SayIt-Setup-x64-Offline.exe.sha256"), `${"a".repeat(64)}  SayIt-Setup-x64-Offline.exe\n`, "utf8");
+    await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+    await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+    await expect(
+      generateReleaseManifest({ tag: "v0.2.0", repo: "VptrCipher/SayIt", releaseFilesDir: dir, outDir: out }),
+    ).rejects.toThrow(/SHA-256 mismatch/i);
+  });
+
+  it("writes checksum lines for all three artifacts", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeDualFixtures(dir);
+    const { checksumsPath } = await generateReleaseManifest({
+      tag: "v0.2.0",
+      repo: "VptrCipher/SayIt",
+      releaseFilesDir: dir,
+      outDir: out,
+    });
+    const lines = (await readFile(checksumsPath, "utf8")).trim().split("\n");
+    expect(lines).toHaveLength(3);
+    expect(lines.some((l) => l.includes("SayIt-Setup-x64-Offline.exe"))).toBe(true);
+    expect(lines.some((l) => /SayIt-Setup-x64\.exe$/.test(l))).toBe(true);
+    expect(lines.some((l) => l.includes(".AppImage"))).toBe(true);
+  });
+});
+
+
+const FAKE_DMG_ARM = "fake arm64 offline dmg bytes larger than smaller";
+const FAKE_DMG_ARM_ON = "fake arm64 ondemand dmg";
+const FAKE_DMG_INTEL = "fake x86_64 offline dmg bytes larger";
+
+describe("macOS DMG manifest (cross-arch, v0.2.0)", () => {
+  async function writeFullMatrix(dir: string) {
+    await writeArtifact(dir, "SayIt-Setup-x64-Offline.exe", FAKE_OFFLINE);
+    await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+    await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+    await writeArtifact(dir, "SayIt-macOS-arm64-Offline.dmg", FAKE_DMG_ARM);
+    await writeArtifact(dir, "SayIt-macOS-arm64-OnDemand.dmg", FAKE_DMG_ARM_ON);
+    await writeArtifact(dir, "SayIt-macOS-x86_64-Offline.dmg", FAKE_DMG_INTEL);
+  }
+
+  it("emits macos_arm64/_ondemand and macos_intel with arch + model metadata", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeFullMatrix(dir);
+    const { manifest } = await generateReleaseManifest({
+      tag: "v0.2.0", repo: "VptrCipher/SayIt", releaseDate: "2026-10-17",
+      releaseFilesDir: dir, outDir: out,
+    });
+    expect(validateReleaseManifest(manifest)).toEqual(manifest);
+    const p = manifest.platforms as Record<string, Record<string, unknown>>;
+
+    expect(p.macos_arm64.format).toBe("dmg");
+    expect(p.macos_arm64.architecture).toBe("arm64");
+    expect(p.macos_arm64.variant).toBe("offline");
+    expect(p.macos_arm64.bundles_models).toBe(true);
+    expect((p.macos_arm64.models as unknown[]).length).toBe(4);
+    expect(p.macos_arm64.min_os_version).toBe("12.0");
+    expect(p.macos_arm64.url).toContain("SayIt-macOS-arm64-Offline.dmg");
+
+    expect(p.macos_arm64_ondemand.variant).toBe("ondemand");
+    expect(p.macos_arm64_ondemand.bundles_models).toBe(false);
+    expect(p.macos_arm64_ondemand.models).toBeUndefined();
+
+    expect(p.macos_intel.architecture).toBe("x86_64");
+    expect(p.macos_intel.variant).toBe("offline");
+    // Intel on-demand was not provided -> absent.
+    expect(p.macos_intel_ondemand).toBeUndefined();
+  });
+
+  it("macOS is optional: a Windows+Linux-only release has no macos keys", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+    await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+    const { manifest } = await generateReleaseManifest({
+      tag: "v0.2.0", repo: "VptrCipher/SayIt", releaseFilesDir: dir, outDir: out,
+    });
+    const keys = Object.keys(manifest.platforms);
+    expect(keys.some((k) => k.startsWith("macos"))).toBe(false);
+    expect(keys).toContain("windows");
+    expect(keys).toContain("linux");
+  });
+
+  it("fails on ambiguous macOS arm64 offline DMGs", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+    await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+    await writeArtifact(dir, "SayIt-macOS-arm64-Offline.dmg", FAKE_DMG_ARM);
+    await writeArtifact(dir, "SayIt-macOS-arm64.dmg", FAKE_DMG_ARM + "2"); // also offline (default)
+    await expect(
+      generateReleaseManifest({ tag: "v0.2.0", repo: "VptrCipher/SayIt", releaseFilesDir: dir, outDir: out }),
+    ).rejects.toThrow(/Ambiguous macOS arm64 offline/i);
+  });
+
+  it("writes a checksum line for each DMG", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeFullMatrix(dir);
+    const { checksumsPath } = await generateReleaseManifest({
+      tag: "v0.2.0", repo: "VptrCipher/SayIt", releaseFilesDir: dir, outDir: out,
+    });
+    const lines = (await readFile(checksumsPath, "utf8")).trim().split("\n");
+    expect(lines.some((l) => l.includes("SayIt-macOS-arm64-Offline.dmg"))).toBe(true);
+    expect(lines.some((l) => l.includes("SayIt-macOS-x86_64-Offline.dmg"))).toBe(true);
   });
 });
