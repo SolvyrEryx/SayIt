@@ -62,3 +62,63 @@ def test_env_override_resolves_app_models(monkeypatch, tmp_path):
     assert MI.bundled_models_root() == str(res)
     assert MI.is_bundled("sherpa-onnx-whisper-small") is True
     assert MI.resolve_bundled_model_dir("sherpa-onnx-whisper-small") is not None
+
+
+# ---------------------------------------------------------------------------
+# macOS DMG packaging command construction (regression for CI exit-214 abort).
+# ---------------------------------------------------------------------------
+def _load_build_module():
+    import importlib
+    import sys
+    from pathlib import Path
+
+    scripts = Path(__file__).resolve().parents[1] / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    return importlib.import_module("build")
+
+
+def _capture_package_cmd(monkeypatch, tmp_path, env_identity):
+    """Invoke package_macos_dmg with subprocess.run mocked; return the argv.
+
+    Briefcase 0.3.26 has NO ``--no-sign`` option for ``package macOS``; without
+    an identity it must be invoked with ``--adhoc-sign`` (and ``--no-input`` so
+    a headless CI runner never blocks on the interactive identity prompt, which
+    previously aborted the job with exit code 214).
+    """
+    build = _load_build_module()
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+
+        class _R:
+            returncode = 0
+
+        return _R()
+
+    monkeypatch.setattr(build.subprocess, "run", fake_run)
+    if env_identity is None:
+        monkeypatch.delenv("SAYIT_MACOS_SIGN_IDENTITY", raising=False)
+    else:
+        monkeypatch.setenv("SAYIT_MACOS_SIGN_IDENTITY", env_identity)
+    # No dist/*.dmg present -> the function returns after the mocked run.
+    build.package_macos_dmg(tmp_path, "offline")
+    return captured["cmd"]
+
+
+def test_macos_unsigned_uses_adhoc_sign_and_no_input(monkeypatch, tmp_path):
+    cmd = _capture_package_cmd(monkeypatch, tmp_path, env_identity=None)
+    assert "package" in cmd and "macOS" in cmd
+    assert "--adhoc-sign" in cmd, cmd
+    assert "--no-input" in cmd, cmd
+    # The invalid flag that caused the interactive-prompt abort must be gone.
+    assert "--no-sign" not in cmd, cmd
+    assert "--identity" not in cmd, cmd
+
+
+def test_macos_signed_uses_identity(monkeypatch, tmp_path):
+    cmd = _capture_package_cmd(monkeypatch, tmp_path, env_identity="Developer ID Application: Example")
+    assert "--identity" in cmd, cmd
+    assert "Developer ID Application: Example" in cmd, cmd
+    assert "--adhoc-sign" not in cmd, cmd

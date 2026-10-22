@@ -331,18 +331,25 @@ def package_macos_dmg(project_root: Path, variant: str) -> None:
     import platform as _platform
 
     identity = os.environ.get("SAYIT_MACOS_SIGN_IDENTITY", "").strip()
-    cmd = [sys.executable, "-m", "briefcase", "package", "macOS", "app"]
+    # --no-input: never block on an interactive prompt on a headless CI runner.
+    # Briefcase otherwise prompts for a signing identity and aborts (exit 214)
+    # when no TTY is attached.
+    cmd = [sys.executable, "-m", "briefcase", "package", "macOS", "app", "--no-input"]
     if identity:
         cmd += ["--identity", identity]
         print(f"[macOS] packaging DMG with signing identity: {identity[:12]}…")
     else:
-        # No signing secret present -> produce an unsigned/adhoc DMG. This is a
+        # No signing secret present -> produce an unsigned ad-hoc DMG. This is a
         # development artifact; public distribution requires signing+notarization.
-        cmd += ["--no-sign"]
+        # NOTE: the correct Briefcase flag for an unsigned package is
+        # ``--adhoc-sign`` (ad-hoc codesign, no identity). ``--no-sign`` is NOT a
+        # valid option for ``briefcase package macOS`` and causes Briefcase to
+        # fall through to the interactive identity prompt, which aborts on CI.
+        cmd += ["--adhoc-sign"]
         print(
             "[macOS] NO signing identity (SAYIT_MACOS_SIGN_IDENTITY unset): "
-            "building UNSIGNED DMG. This is NOT notarized and not for public "
-            "distribution."
+            "building UNSIGNED (ad-hoc) DMG. This is NOT notarized and not for "
+            "public distribution."
         )
     subprocess.run(cmd, cwd=project_root, check=True)
 
