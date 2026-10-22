@@ -365,6 +365,34 @@ def compute_dmg_capacity_bytes(app_payload_bytes: int) -> int:
     return capacity
 
 
+def _hdiutil_detach(target: str, attempts: int = 6) -> bool:
+    """Detach an attached DMG image, tolerating DiskArbitration lag.
+
+    ``hdiutil convert`` fails with "Resource temporarily unavailable" if the
+    writable image is still attached, and a detach immediately after a large
+    ``ditto`` can report "timeout for DiskArbitration expired / drive not
+    detached". Retry: plain detach first, then ``-force``, with a short settle
+    between tries. Returns True once the target is released.
+    """
+    import time as _time
+
+    for i in range(attempts):
+        flags = ["-force"] if i > 0 else []
+        r = subprocess.run(
+            ["hdiutil", "detach", target, *flags],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0:
+            return True
+        # If hdiutil says it's already not attached, treat as success.
+        combined = (r.stdout + r.stderr).lower()
+        if "no such file" in combined or "not attached" in combined:
+            return True
+        _time.sleep(2.0 * (i + 1))
+    print(f"[macOS dmg] WARNING: could not confirm detach of {target}")
+    return False
+
+
 def _make_dmg_hdiutil(app_path: Path, out_dmg: Path, volume_name: str) -> None:
     """Build a compressed, read-only DMG from a (already-signed) ``.app`` using
     macOS-native ``hdiutil``, sized from the actual payload.
@@ -412,7 +440,9 @@ def _make_dmg_hdiutil(app_path: Path, out_dmg: Path, volume_name: str) -> None:
             ],
             check=True,
         )
-        # 2) Attach (no auto-open, no Finder browse) and find the mount point.
+        # 2) Attach (no auto-open, no Finder browse). Capture BOTH the device
+        #    node and the mount point from the attach table: detaching by the
+        #    device node is more reliable than by mount point.
         attach = subprocess.run(
             [
                 "hdiutil", "attach", str(rw_dmg),
@@ -421,13 +451,18 @@ def _make_dmg_hdiutil(app_path: Path, out_dmg: Path, volume_name: str) -> None:
             check=True, capture_output=True, text=True,
         )
         mount_point = None
+        device_node = None
         for line in attach.stdout.splitlines():
+            parts = line.split("\t")
+            if parts and parts[0].strip().startswith("/dev/") and device_node is None:
+                device_node = parts[0].strip()
             if "/Volumes/" in line:
                 mount_point = "/Volumes/" + line.split("/Volumes/", 1)[1].strip()
         if not mount_point:
             raise RuntimeError(
                 f"[macOS dmg] could not determine mount point:\n{attach.stdout}"
             )
+        detached = False
         try:
             mp = Path(mount_point)
             # 3) Copy the signed .app verbatim (ditto preserves metadata +
@@ -439,13 +474,19 @@ def _make_dmg_hdiutil(app_path: Path, out_dmg: Path, volume_name: str) -> None:
             app_link = mp / "Applications"
             if not app_link.exists():
                 os.symlink("/Applications", app_link)
+            # Flush writes before detaching so convert sees a quiescent image.
+            subprocess.run(["sync"], check=False)
+            # 4a) Detach the WRITABLE image fully BEFORE converting. A lingering
+            #     DiskArbitration reference makes `convert` fail with "Resource
+            #     temporarily unavailable", so detach with retries by device
+            #     node (falling back to the mount point) and confirm release.
+            detached = _hdiutil_detach(device_node or mount_point)
         finally:
-            # Always detach, even if the copy failed.
-            subprocess.run(
-                ["hdiutil", "detach", mount_point, "-force"],
-                check=False,
-            )
-        # 4) Convert to a compressed, read-only distributable DMG.
+            if not detached:
+                # Best-effort final detach if the normal path failed/raised.
+                _hdiutil_detach(device_node or mount_point, attempts=3)
+        # 4b) Convert the now-detached writable image to a compressed,
+        #     read-only distributable DMG.
         subprocess.run(
             [
                 "hdiutil", "convert", str(rw_dmg),
@@ -461,7 +502,11 @@ def _make_dmg_hdiutil(app_path: Path, out_dmg: Path, volume_name: str) -> None:
         check=True, capture_output=True, text=True,
     )
     vmount = None
+    vdev = None
     for line in verify.stdout.splitlines():
+        parts = line.split("\t")
+        if parts and parts[0].strip().startswith("/dev/") and vdev is None:
+            vdev = parts[0].strip()
         if "/Volumes/" in line:
             vmount = "/Volumes/" + line.split("/Volumes/", 1)[1].strip()
     try:
@@ -485,8 +530,8 @@ def _make_dmg_hdiutil(app_path: Path, out_dmg: Path, volume_name: str) -> None:
             f"{app_path.name} ({copied_size / (1024*1024):.1f} MiB)"
         )
     finally:
-        if vmount:
-            subprocess.run(["hdiutil", "detach", vmount, "-force"], check=False)
+        if vdev or vmount:
+            _hdiutil_detach(vdev or vmount, attempts=4)
 
 
 def package_macos_dmg(project_root: Path, variant: str) -> None:
