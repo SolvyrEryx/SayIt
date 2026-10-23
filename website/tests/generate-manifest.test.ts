@@ -349,6 +349,51 @@ describe("dual Windows installers (v0.2.0)", () => {
 });
 
 
+describe("Windows/Linux-only v0.2.0 (macOS deferred)", () => {
+  it("produces a valid manifest with NO macOS platform keys when no DMGs are present", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    // Exactly what the tag-triggered release job uploads when build-macos is
+    // skipped for v0.2.0: both Windows installers + the Linux AppImage, no DMG.
+    await writeArtifact(dir, "SayIt-Setup-x64-Offline.exe", FAKE_OFFLINE);
+    await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+    await writeArtifact(dir, "SayIt-v0.2.0-Linux-x86_64.AppImage", FAKE_APPIMAGE);
+
+    const { manifest } = await generateReleaseManifest({
+      tag: "v0.2.0",
+      repo: "VptrCipher/SayIt",
+      releaseFilesDir: dir,
+      outDir: out,
+    });
+
+    expect(validateReleaseManifest(manifest)).toEqual(manifest);
+    // Windows + Linux present...
+    expect(manifest.platforms.windows).toBeDefined();
+    expect(manifest.platforms.linux).toBeDefined();
+    // ...and absolutely no macOS keys (no unavailable/fabricated mac downloads).
+    const macKeys = Object.keys(manifest.platforms).filter((k) =>
+      k.startsWith("macos"),
+    );
+    expect(macKeys).toEqual([]);
+  });
+
+  it("still fails fast if the Linux AppImage is missing (no partial release)", async () => {
+    const dir = await makeFixtureDir();
+    const out = await makeFixtureDir();
+    await writeArtifact(dir, "SayIt-Setup-x64-Offline.exe", FAKE_OFFLINE);
+    await writeArtifact(dir, "SayIt-Setup-x64.exe", FAKE_EXE);
+    await expect(
+      generateReleaseManifest({
+        tag: "v0.2.0",
+        repo: "VptrCipher/SayIt",
+        releaseFilesDir: dir,
+        outDir: out,
+      }),
+    ).rejects.toThrow(/appimage artifact missing/i);
+  });
+});
+
+
 const FAKE_DMG_ARM = "fake arm64 offline dmg bytes larger than smaller";
 const FAKE_DMG_ARM_ON = "fake arm64 ondemand dmg";
 const FAKE_DMG_INTEL = "fake x86_64 offline dmg bytes larger";

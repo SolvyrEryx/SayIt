@@ -2,6 +2,20 @@
 
 ## [0.2.0] - 2026-10-17
 
+### Release scope (v0.2.0 distribution)
+This v0.2.0 release ships **Windows and Linux builds only**:
+- Windows on-demand installer `SayIt-Setup-x64.exe` (models downloaded on first use).
+- Windows Full Offline installer `SayIt-Setup-x64-Offline.exe` (four bundled INT8 models).
+- Linux x86_64 AppImage (`SayIt-<version>-Linux-x86_64.AppImage`) with its SHA-256 checksum.
+
+**macOS distribution is deferred.** The macOS `.app`/DMG build works in CI, but a
+public macOS download is intentionally **not** part of this release pending
+Apple Developer ID signing, notarization, and native desktop acceptance. No
+macOS DMG is published in v0.2.0. The Linux AppImage passed the automated CI
+build + smoke test; hands-on Linux X11/Wayland desktop acceptance (hotkeys,
+clipboard insertion, notifications) has **not** been manually performed for this
+release and is tracked in `RELEASE_CHECKLIST.md`.
+
 ### Cross-platform support (Windows · macOS · Linux)
 - Added a platform capability layer (`utils/capabilities.py`) centralizing
   OS/arch detection, display-session (X11/Wayland) detection, hotkey-backend
