@@ -1,54 +1,95 @@
-# SayIt
-
 <div align="center">
+
+<img src="docs/assets/sayit-hero-3d.svg" alt="SayIt — animated neon-orange audio visual" width="100%" />
+
+# SayIt
 
 ### Your voice. Your words. Your workflow.
 
-**Local-first desktop dictation and voice productivity.**
+**A local-first desktop dictation and voice-productivity workspace.**
 
-Speak naturally, convert speech into text locally, manage notes and reminders, and work across your desktop without depending on cloud transcription.
+Speak naturally. Turn speech into clean text. Capture ideas, manage reminders, and keep moving across your desktop — with on-device speech recognition.
 
-[![Release](https://img.shields.io/badge/release-v0.2.0-orange)](https://github.com/VptrCipher/SayIt/releases/tag/v0.2.0)
-[![Windows](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows)](#downloads)
-[![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)](#downloads)
-[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](#development)
-[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
-[![Privacy](https://img.shields.io/badge/Recognition-On--Device-2E7D32)](#privacy)
+<p>
+  <a href="https://github.com/VptrCipher/SayIt/releases/tag/v0.2.0"><img src="https://img.shields.io/badge/RELEASE-v0.2.0-FF6600?style=for-the-badge&logo=github&logoColor=white" alt="Release v0.2.0" /></a>
+  <a href="#downloads"><img src="https://img.shields.io/badge/WINDOWS-x64-252525?style=for-the-badge&logo=windows" alt="Windows x64" /></a>
+  <a href="#downloads"><img src="https://img.shields.io/badge/LINUX-x86__64-252525?style=for-the-badge&logo=linux" alt="Linux x86_64" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-252525?style=for-the-badge" alt="MIT License" /></a>
+  <img src="https://img.shields.io/badge/ASR-ON--DEVICE-252525?style=for-the-badge" alt="On-device speech recognition" />
+</p>
 
-**[Download SayIt v0.2.0](https://github.com/VptrCipher/SayIt/releases/tag/v0.2.0)** · **[Official Website](https://vptrcipher.github.io/SayIt/)** · **[Report an Issue](https://github.com/VptrCipher/SayIt/issues)**
-
-<img src="docs/assets/sayit-home-idle.png" alt="SayIt desktop application" width="480">
+**[Download SayIt](https://github.com/VptrCipher/SayIt/releases/tag/v0.2.0)** &nbsp;·&nbsp; **[Website](https://vptrcipher.github.io/SayIt/)** &nbsp;·&nbsp; **[Changelog](CHANGELOG.md)** &nbsp;·&nbsp; **[Report an issue](https://github.com/VptrCipher/SayIt/issues)**
 
 *Built by Rahul J, Noah J, and Pranav H.*
 
 </div>
 
 > [!IMPORTANT]
-> **SayIt v0.2.0 is available for Windows x64 and Linux x86_64.**
->
-> macOS builds exist in CI, but public macOS distribution is deferred until Developer ID signing, notarization, and native acceptance are completed. No macOS installer is included in v0.2.0.
->
-> Linux AppImage build and automated smoke tests have passed. Full hands-on X11 and Wayland desktop acceptance remains in progress.
+> **v0.2.0 is publicly distributed for Windows x64 and Linux x86_64.** macOS packaging exists in CI, but public macOS distribution is deferred until Developer ID signing, notarization, and native acceptance are complete. Linux AppImage build and automated smoke tests passed; hands-on X11 and Wayland desktop acceptance remains pending.
+
+---
+
+## The SayIt experience
+
+SayIt is built around a simple idea: voice should be a first-class way to work on your computer, not another isolated transcription box.
+
+| **DICTATE** | **THINK** | **CAPTURE** | **FOLLOW THROUGH** |
+|:---:|:---:|:---:|:---:|
+| Desktop-wide voice typing | Conversational assistant | Local notes + Voice Widget | Persistent reminders |
+| Speak into the app you're already using | Talk or type in a dedicated panel | Keep ideas close while you work | Turn a request into a confirmed reminder |
+
+## The transcription experience
+
+The transcription interface has been updated around clear, visible workflow states rather than a static recording indicator.
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center" width="50%">
+        <strong>01 · READY</strong><br/>
+        <img src="docs/assets/sayit-home-idle.png" alt="SayIt Home ready state" width="100%"/><br/>
+        <sub>Home shows the shortcut, speech mode and current context.</sub>
+      </td>
+      <td align="center" width="50%">
+        <strong>02 · LISTENING</strong><br/>
+        <img src="docs/assets/sayit-recording.png" alt="SayIt listening state with SI recording indicator" width="100%"/><br/>
+        <sub>A floating SI-branded pill displays a live orange waveform.</sub>
+      </td>
+    </tr>
+    <tr>
+      <td align="center" width="50%">
+        <strong>03 · TRANSCRIPT READY</strong><br/>
+        <img src="docs/assets/sayit-result.png" alt="SayIt completed transcript result" width="100%"/><br/>
+        <sub>The latest transcript appears in a selectable result card.</sub>
+      </td>
+      <td align="center" width="50%">
+        <strong>04 · CONFIGURE</strong><br/>
+        <img src="docs/assets/sayit-settings.png" alt="SayIt settings interface" width="100%"/><br/>
+        <sub>Configure recognition, vocabulary, snippets and privacy.</sub>
+      </td>
+    </tr>
+  </table>
+  <img src="docs/assets/sayit-setup.png" alt="SayIt first-run setup wizard" width="72%"/>
+  <br/>
+  <sub>Product screenshots show the actual desktop application. The animated 3D hero is a README visual, not a screenshot of the application.</sub>
+</div>
+
+### What happens when you dictate?
+
+1. **Ready** — SayIt waits for your configured global shortcut.
+2. **Listening** — hold `Ctrl + Space`; a compact floating pill appears with the SI mark and audio-responsive waveform.
+3. **Transcribing** — release the shortcut; the local recognition pipeline processes the captured utterance.
+4. **Transcript ready** — the result appears on the Home view and is routed to the active destination.
+
+The listening indicator stays separate from the main window, so you can see recording feedback while working in another application. State transitions use the app's reduced-motion-aware motion system.
 
 ---
 
 ## What is SayIt?
 
-SayIt is a local-first desktop voice-typing and productivity application.
+SayIt is a local-first desktop voice-typing and productivity application. It combines on-device speech recognition with deterministic transcript intelligence, a conversational assistant, a floating Voice Widget, local Notes, and a persistent reminder workflow.
 
-It combines on-device speech recognition with configurable text processing, a conversational assistant, a voice widget, local notes, and persistent reminders.
-
-The core dictation experience is simple:
-
-1. Hold your global recording shortcut.
-2. Speak naturally.
-3. Release the shortcut.
-4. SayIt transcribes your utterance on your computer.
-5. The resulting text is processed and inserted into your active application.
-
-Beyond dictation, SayIt provides a focused assistant for conversational interactions and reminder management, along with tools for capturing notes and organizing spoken information.
-
-**No cloud transcription account or API key is required for core dictation.**
+The core dictation path is deliberately direct: **hold the shortcut → speak → release → review the transcript → insert it into your active application.** No cloud transcription account or API key is required for core dictation.
 
 ## Why SayIt?
 
@@ -66,16 +107,19 @@ Beyond dictation, SayIt provides a focused assistant for conversational interact
 
 ### 1. Push-to-talk voice typing
 
-- Configurable global keyboard shortcut.
-- Default shortcut: `Ctrl + Space`.
+- Configurable global keyboard shortcut; default: `Ctrl + Space`.
 - Hold to record and release to transcribe.
-- On-device speech recognition.
-- Clipboard-based text insertion.
-- `Esc` cancellation for active recording and transcription.
-- Visible Ready, Recording, Processing, and Error states.
-- Persistent settings and custom-hotkey restoration.
+- A separate floating recording pill carries the neon-orange SI identity and a live 11-bar waveform responsive to microphone audio level / spectrum.
+- Home reflects the real workflow: **Ready**, **Listening**, **Transcribing**, then the latest completed transcript.
+- The transcript result is selectable and remains available for recovery if insertion fails.
+- Text is inserted through the platform clipboard / paste path.
+- `Esc` cancels active recording or transcription; cancelled output is not inserted.
+- Explicit job ownership prevents stale transcription results from overwriting newer output.
+- Model and custom-hotkey settings persist across restarts.
 
-<img src="docs/assets/sayit-recording.png" alt="SayIt recording interface" width="300">
+<img src="docs/assets/sayit-recording.png" alt="SayIt live recording state" width="420"/>
+
+**Recognition is utterance-based:** SayIt transcribes after you release the shortcut; it is not a continuous live-captioning system.
 
 ### 2. Multilingual speech recognition
 
