@@ -1,10 +1,10 @@
 import os
-from pathlib import Path
 import signal
 import sys
 from datetime import datetime
 from enum import Enum, auto
 from functools import partial
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QObject, QTimer
@@ -17,27 +17,38 @@ from .core.asr import (
     TranscriptionEngine,
     TranscriptionWorkerThread,
 )
-from .core.asr.pipeline_timing import PipelineTiming
 from .core.asr.intelligence_pipeline import IntelligencePipeline
+from .core.asr.pipeline_timing import PipelineTiming
 from .core.audio import AudioRecorder
 from .core.context import ContextEngine
 from .core.input import HotkeyListener
 from .core.intelligence import IntelligenceOrchestrator, OrchestratorConfig
-from .core.safezones import is_protected
-from .core.snippets import snippets_from_any
-from .core.voice_commands import OutputBuffer
+from .core.conversation import ChatVoiceController
 from .core.output import TextOutputController
+from .core.reminders import (
+    ReminderScheduler,
+    ReminderService,
+    ReminderStore,
+    build_notifier,
+)
+from .core.safezones import is_protected
 from .core.settings import (
     TranscriptionRecord,
     add_history_record,
     get_settings,
 )
+from .core.snippets import snippets_from_any
 from .core.transcript_processor import LLMProcessor
+from .core.voice_commands import OutputBuffer
 from .ui.download_dialog import DownloadDialog
 from .ui.main_window import SettingsWindow
+from .ui.reminders_panel import RemindersPanel
+from .ui.notes_panel import NotesPanel
 from .ui.recording_toast import RecordingToast
 from .ui.setup_wizard import SetupWizard
 from .ui.tray import SystemTray, TrayStatus
+from .ui.voice_widget import VoiceWidget
+from .ui.chat_panel import ChatPanel
 from .utils.logger import get_logger
 from .utils.platform import set_autostart
 
@@ -74,6 +85,10 @@ class AppState(Enum):
     CANCELLED = auto()
     ERROR = auto()
     SHUTTING_DOWN = auto()
+    # The chat assistant owns the shared microphone for a voice-to-chat turn.
+    # While in this state the foreground dictation hotkey is locked out so the
+    # two never contend for the single recorder.
+    CHAT_RECORDING = auto()
 
 
 class TranscribeApp(QObject):
@@ -97,6 +112,11 @@ class TranscribeApp(QObject):
             on_audio_level=self._capture_audio_level,
             on_audio_spectrum=self._capture_audio_spectrum,
         )
+        # Enforce language<->model consistency BEFORE the engine is created so a
+        # Hindi/Kannada dictation language can never start on the English-only
+        # Parakeet model (and vice versa). This closes the live-dictation
+        # desync where model_id and dictation_language disagreed.
+        self._reconcile_language_and_model()
         self._transcriber = TranscriptionEngine(
             model_name=self._settings.model_id,
             on_state_change=self._on_engine_state_change,
@@ -161,9 +181,62 @@ class TranscribeApp(QObject):
 
         self._tray.settings_requested.connect(self._show_settings)
         self._tray.quit_requested.connect(self._quit)
+        self._tray.notes_requested.connect(self._show_notes_panel)
+        self._tray.voice_widget_requested.connect(self._toggle_voice_widget)
+        self._tray.assistant_requested.connect(self._show_chat_panel)
+        self._tray.reminders_requested.connect(self._show_reminders_panel)
         self._hotkey_listener.hotkey_pressed.connect(self._start_recording)
         self._hotkey_listener.hotkey_released.connect(self._stop_recording)
         self._hotkey_listener.cancel_requested.connect(self._cancel_current)
+
+        # v0.2.0 Notes + Voice Widget. Lazily created. Dictate-to-Note is an
+        # explicit opt-in: when OFF (default) dictation inserts into the
+        # foreground application exactly as before. The panel/widget never
+        # touch the recorder or clipboard directly; they drive the SAME
+        # start/stop/cancel methods via signals so behaviour stays centralized.
+        self._notes_panel: Optional[NotesPanel] = None
+        self._voice_widget: Optional[VoiceWidget] = None
+        self._chat_panel: Optional[ChatPanel] = None
+        self._chat_voice = None  # ChatVoiceController, created with the panel
+        self._dictate_to_note = bool(
+            getattr(self._settings, "dictate_to_note_enabled", False)
+        )
+
+        # v0.2.0 Reminders. Persistent + scheduled while SayIt runs. The store
+        # is SEPARATE from conversation history (disabling chat retention never
+        # deletes reminders). The notifier reuses the existing system tray; a
+        # single QTimer-driven scheduler reconciles missed reminders on startup
+        # and fires due ones. Reminders ONLY fire while SayIt is running (no OS
+        # background service) — disclosed in the Reminders panel.
+        self._reminders_panel: Optional[RemindersPanel] = None
+        self._reminder_store = ReminderStore()
+        self._reminder_service = ReminderService(self._reminder_store)
+        self._notifier = build_notifier(self._tray)
+        # Manual QA hook: SAYIT_TEST_REMINDER_SECONDS=<n> schedules a one-off
+        # test reminder <n> seconds from launch and tightens the tick so a real
+        # desktop notification can be verified WITHOUT changing the system clock
+        # or waiting until tomorrow. Off by default; no effect in normal runs.
+        import os as _os
+
+        test_secs = _os.environ.get("SAYIT_TEST_REMINDER_SECONDS", "").strip()
+        tick_ms = None
+        if test_secs.isdigit() and int(test_secs) > 0:
+            tick_ms = 1000  # check every second during the manual test
+        self._reminder_scheduler = ReminderScheduler(
+            self._reminder_store, self._notifier,
+            interval_ms=tick_ms, on_fire=self._on_reminders_fired,
+        )
+        if tick_ms is not None:
+            self._schedule_test_reminder(int(test_secs))
+        try:
+            self._reminder_scheduler.start()
+        except Exception as e:  # pragma: no cover - defensive; never block launch
+            logger.error("Reminder scheduler failed to start: %s", e)
+
+        if getattr(self._settings, "voice_widget_enabled", False):
+            self._ensure_voice_widget()
+        if getattr(self._settings, "notes_panel_visible", False):
+            self._show_notes_panel()
 
     # Central mapping from workflow state to the visible tray status. CANCELLED
     # reuses the IDLE indicator (it collapses to IDLE immediately after a brief
@@ -174,6 +247,7 @@ class TranscribeApp(QObject):
         AppState.TRANSCRIBING: TrayStatus.PROCESSING,
         AppState.CANCELLED: TrayStatus.IDLE,
         AppState.ERROR: TrayStatus.ERROR,
+        AppState.CHAT_RECORDING: TrayStatus.RECORDING,
     }
 
     def _set_state(self, state: "AppState", message: str = "") -> None:
@@ -200,6 +274,13 @@ class TranscribeApp(QObject):
         # visibility. This is observe-only: it never drives recording,
         # transcription, cancellation, or insertion.
         self._update_home(state)
+
+        # Reflect state on the persistent Voice Widget (if shown). Observe-only.
+        if getattr(self, "_voice_widget", None) is not None:
+            try:
+                self._voice_widget.set_workflow_state(state.name)
+            except Exception as e:
+                logger.debug(f"Voice widget state update skipped: {e}")
 
     # Workflow state -> HomeState. ERROR falls back to IDLE because the Home tab
     # has no dedicated error presentation (the tray already surfaces errors).
@@ -251,7 +332,9 @@ class TranscribeApp(QObject):
                 self._post_asr_pipeline = IntelligencePipeline(
                     threshold=getattr(self._settings, "intelligence_threshold", 0.90),
                     user_vocabulary=self._settings.custom_vocabulary,
-                    domain_aware=getattr(self._settings, "intelligence_domain_aware", False),
+                    domain_aware=getattr(
+                        self._settings, "intelligence_domain_aware", False
+                    ),
                     enabled_domains=getattr(self._settings, "enabled_domains", None),
                     disabled_domains=getattr(self._settings, "disabled_domains", None),
                 )
@@ -259,6 +342,288 @@ class TranscribeApp(QObject):
                 logger.debug(f"Post-ASR pipeline unavailable (safe): {e}")
                 return None
         return self._post_asr_pipeline
+
+    # -- v0.2.0 Notes + Voice Widget --------------------------------------
+    def _ensure_notes_panel(self) -> NotesPanel:
+        """Create the Notes panel on first use. Idempotent."""
+        if self._notes_panel is None:
+            self._notes_panel = NotesPanel(
+                dock_side=getattr(self._settings, "notes_dock_side", "right"),
+            )
+            self._notes_panel.closed.connect(self._on_notes_panel_closed)
+        return self._notes_panel
+
+    def _show_notes_panel(self) -> None:
+        panel = self._ensure_notes_panel()
+        # Dock to the configured edge and reveal with a reduced-motion-aware
+        # slide (instant when reduced motion is enabled).
+        panel.show_docked()
+        panel.raise_()
+        panel.activateWindow()
+        panel.focus_editor()
+        if not self._settings.notes_panel_visible:
+            self._settings.notes_panel_visible = True
+            self._settings.save()
+
+    def _on_notes_panel_closed(self) -> None:
+        if self._settings.notes_panel_visible:
+            self._settings.notes_panel_visible = False
+            self._settings.save()
+
+    # -- Conversational assistant (chat) ---------------------------------
+    def _build_conversation_orchestrator(self):
+        """Build the conversational orchestrator.
+
+        Local ConversationEngine is authoritative. Cloud reasoning is wired to
+        the EXISTING gated LLM path: it is only reachable when the user has
+        opted in (an active enhancement / provider is configured) AND the
+        provider is available. A configured key alone does not authorize use.
+        """
+        from datetime import date
+
+        from .core.conversation import (
+            CloudPolicy,
+            ConversationEngine,
+            ConversationOrchestrator,
+            ConversationStore,
+        )
+
+        engine = ConversationEngine(today=date.today())
+        # Privacy-gated retention: in-memory unless the user explicitly enabled
+        # conversation history (separate opt-in from transcript history).
+        store = ConversationStore(
+            enabled=bool(getattr(self._settings, "conversation_history_enabled", False))
+        )
+
+        # Mirror the existing cloud opt-in used for transcript enhancement.
+        cloud_enabled = bool(
+            self._settings.llm_api_key
+            or self._settings.active_enhancement_id
+            or self._settings.llm_provider == "ollama"
+        )
+        if self._llm_processor is None:
+            self._init_llm_processor()
+        provider_available = self._llm_processor is not None and (
+            self._llm_processor.is_configured()
+        )
+
+        policy = CloudPolicy(
+            cloud_enabled=cloud_enabled, provider_available=provider_available
+        )
+
+        cloud_reply_fn = None
+        if cloud_enabled and provider_available:
+            def cloud_reply_fn(text: str, ctx: dict) -> str:
+                # Narrow prompt: the user's message + the minimal task context
+                # only (no audio, clipboard, screen, notes, or full history).
+                from .core.transcript_processor.llm_processor import Enhancement
+
+                enh = Enhancement(
+                    id="assistant",
+                    title="Assistant reply",
+                    prompt=(
+                        "You are SayIt's concise desktop assistant. Given the "
+                        "user's message and the current structured task state, "
+                        "reply briefly and accurately. Do not invent dates, "
+                        "times, or participants. Task state: " + str(ctx.get("task", {}))
+                    ),
+                )
+                resp = self._llm_processor.process(text, enh)
+                return resp.content
+
+        return ConversationOrchestrator(engine, policy, cloud_reply_fn=cloud_reply_fn, store=store)
+
+    def _ensure_chat_panel(self) -> ChatPanel:
+        if self._chat_panel is None:
+            orchestrator = self._build_conversation_orchestrator()
+            # Bridge chat turns to REAL reminders (authoritative service). Typed
+            # and spoken input both flow through the panel -> bridge/engine, so
+            # they share one execution path. Reminders stay independent of chat
+            # history retention (separate store).
+            from .core.reminders import ReminderConversationBridge
+
+            bridge = ReminderConversationBridge(self._reminder_service, orchestrator._engine)
+            self._chat_panel = ChatPanel(orchestrator, reminder_bridge=bridge)
+            # Refresh an open Reminders panel after chat-driven changes.
+            self._chat_reminder_bridge = bridge
+            # Voice input in chat uses the SAME local recorder + ASR engine,
+            # isolated from foreground dictation (single-recorder ownership).
+            self._chat_voice = ChatVoiceController(
+                self._recorder,
+                self._transcriber,
+                sample_rate=self._settings.sample_rate,
+                can_acquire_recorder=self._chat_can_acquire_recorder,
+                on_acquire=self._chat_acquire_recorder,
+                on_release=self._chat_release_recorder,
+                enable_technical=self._settings.technical_correction_enabled,
+                enable_formatting=self._settings.structured_formatting_enabled,
+            )
+            # The corrected transcript is submitted to the chat as a user
+            # message — NEVER to the foreground paste flow.
+            self._chat_voice.transcript_ready.connect(self._chat_panel.submit_text)
+            self._chat_voice.state_changed.connect(self._chat_panel.set_voice_state)
+            self._chat_voice.status_message.connect(self._chat_panel.set_voice_status)
+            self._chat_panel.voice_requested.connect(self._on_chat_voice_requested)
+            self._chat_panel.closed.connect(self._on_chat_panel_closed)
+        return self._chat_panel
+
+    def _chat_can_acquire_recorder(self) -> bool:
+        """The shared recorder is free only when no dictation session is active."""
+        return self._state in (AppState.IDLE, AppState.ERROR, AppState.CANCELLED)
+
+    def _chat_acquire_recorder(self) -> None:
+        # Lock out the foreground dictation hotkey for the duration of the chat
+        # recording by taking the single-recorder ownership state.
+        self._set_state(AppState.CHAT_RECORDING)
+
+    def _chat_release_recorder(self) -> None:
+        if self._state is AppState.CHAT_RECORDING:
+            self._set_state(AppState.IDLE)
+
+    def _on_chat_panel_closed(self) -> None:
+        # Safe cleanup if the panel closes mid-session.
+        if getattr(self, "_chat_voice", None) is not None:
+            self._chat_voice.shutdown()
+        self._chat_release_recorder()
+
+    def _show_chat_panel(self) -> None:
+        panel = self._ensure_chat_panel()
+        panel.show()
+        panel.raise_()
+        panel.activateWindow()
+        panel.focus_input()
+
+    def _show_reminders_panel(self) -> None:
+        if self._reminders_panel is None:
+            self._reminders_panel = RemindersPanel(self._reminder_service)
+        self._reminders_panel.refresh()
+        self._reminders_panel.show()
+        self._reminders_panel.raise_()
+        self._reminders_panel.activateWindow()
+
+    def _on_reminders_fired(self, outcomes) -> None:
+        """Keep an open Reminders panel in sync after the scheduler fires."""
+        if self._reminders_panel is not None:
+            try:
+                self._reminders_panel.refresh()
+            except Exception as e:  # pragma: no cover - UI defensive
+                logger.debug("Reminders panel refresh skipped: %s", e)
+
+    def _schedule_test_reminder(self, seconds: int) -> None:
+        """Create a one-off test reminder ``seconds`` from now (manual QA only).
+
+        Uses the authoritative store with ``allow_past`` disabled; the trigger is
+        in the near future so the scheduler fires it shortly, letting a human
+        verify a real desktop notification without altering the system clock.
+        """
+        import datetime as _dt
+
+        from .core.reminders import Reminder
+
+        try:
+            now = self._reminder_store.now()
+            trigger = now + _dt.timedelta(seconds=max(1, seconds))
+            self._reminder_store.add(
+                Reminder(
+                    title="SayIt test reminder",
+                    trigger_at=trigger,
+                    description=f"Fires ~{seconds}s after launch (manual QA).",
+                    idempotency_key=f"test-{trigger.isoformat()}",
+                )
+            )
+            logger.info("Scheduled manual-QA test reminder for %s", trigger.isoformat())
+        except Exception as e:  # pragma: no cover - defensive
+            logger.error("Failed to schedule test reminder: %s", e)
+
+    def _on_chat_voice_requested(self) -> None:
+        """Toggle the chat voice session (start/stop) via the ChatVoiceController.
+
+        Ownership is arbitrated inside the controller: if foreground dictation
+        is active it refuses with a clear message and never steals the recorder.
+        The chat voice path never triggers the foreground paste workflow.
+        """
+        if getattr(self, "_chat_voice", None) is None:
+            return
+        self._chat_voice.toggle()
+
+    def _on_notes_dock_changed(self, side: str) -> None:
+        """Re-dock a live Notes panel when the dock-side preference changes."""
+        if self._notes_panel is not None:
+            try:
+                if self._notes_panel.isVisible():
+                    self._notes_panel.show_docked()
+                else:
+                    self._notes_panel.dock_to_edge(side)
+            except Exception as e:
+                logger.debug(f"Notes re-dock skipped: {e}")
+
+    def _ensure_voice_widget(self) -> VoiceWidget:
+        """Create and wire the persistent Voice Widget on first use."""
+        if self._voice_widget is None:
+            self._voice_widget = VoiceWidget(
+                dictate_to_note=self._dictate_to_note,
+                position=getattr(self._settings, "voice_widget_position", None),
+            )
+            vw = self._voice_widget
+            # Drive the SAME dictation path as the global hotkey.
+            vw.record_requested.connect(self._start_recording)
+            vw.stop_requested.connect(self._stop_recording)
+            vw.cancel_requested.connect(self._cancel_current)
+            vw.notes_requested.connect(self._show_notes_panel)
+            vw.dictate_to_note_toggled.connect(self._set_dictate_to_note)
+            vw.moved.connect(self._on_voice_widget_moved)
+            vw.set_workflow_state(self._state.name)
+        self._voice_widget.show()
+        self._voice_widget.raise_()
+        return self._voice_widget
+
+    def _toggle_voice_widget(self) -> None:
+        """Show/hide the persistent Voice Widget and persist the preference."""
+        if self._voice_widget is not None and self._voice_widget.isVisible():
+            self._voice_widget.hide()
+            self._settings.voice_widget_enabled = False
+        else:
+            self._ensure_voice_widget()
+            self._settings.voice_widget_enabled = True
+        self._settings.save()
+
+    def _set_dictate_to_note(self, enabled: bool) -> None:
+        """Toggle Dictate-to-Note routing. Explicit, persisted, reversible.
+
+        When enabled, a completed transcript is appended to the active note
+        instead of being inserted into the foreground application. Disabling it
+        restores ordinary foreground insertion immediately.
+        """
+        self._dictate_to_note = bool(enabled)
+        self._settings.dictate_to_note_enabled = self._dictate_to_note
+        self._settings.save()
+        if self._voice_widget is not None:
+            self._voice_widget.set_dictate_to_note(self._dictate_to_note)
+        logger.info(f"Dictate-to-Note {'ON' if self._dictate_to_note else 'OFF'}")
+
+    def _on_voice_widget_moved(self, x: int, y: int) -> None:
+        self._settings.voice_widget_position = (int(x), int(y))
+        self._settings.save()
+
+    def _route_dictation_to_note(self, final_text: str) -> bool:
+        """Append ``final_text`` to the active note. Returns True on success.
+
+        Only used when Dictate-to-Note is active. Ensures the Notes panel/store
+        exists so a spoken note is captured and persisted even if the panel was
+        never opened. Fail-safe: any error returns False so the caller falls
+        back to ordinary foreground insertion (dictation is never lost).
+        """
+        try:
+            panel = self._ensure_notes_panel()
+            panel.append_dictation(final_text)
+            # Surface the note so the user sees where their words went.
+            if not panel.isVisible():
+                panel.show()
+                panel.raise_()
+            return True
+        except Exception as e:
+            logger.error(f"Dictate-to-Note routing failed (falling back): {e}")
+            return False
 
     def _update_home_context(self, resolution) -> None:
         """Reflect the resolved context on the Home tab, if it exists.
@@ -292,6 +657,7 @@ class TranscribeApp(QObject):
             return
         try:
             from .core.asr import speech_mode as SM
+
             setter(SM.status_line(self._settings.model_id))
         except Exception as e:
             logger.debug(f"Home speech-mode update skipped: {e}")
@@ -376,9 +742,7 @@ class TranscribeApp(QObject):
         # Only start recording from IDLE/ERROR. Never start while already
         # recording, transcribing, or shutting down.
         if self._state not in (AppState.IDLE, AppState.ERROR, AppState.CANCELLED):
-            logger.debug(
-                f"Ignoring start_recording in state {self._state.name}"
-            )
+            logger.debug(f"Ignoring start_recording in state {self._state.name}")
             return
 
         # Phase 8E Safe Zones: GATE before any audio is captured. If the current
@@ -399,9 +763,7 @@ class TranscribeApp(QObject):
                 logger.info(
                     f"Recording blocked by Safe Zone (app '{sz.matched_entry}')"
                 )
-                self._set_state(
-                    AppState.IDLE, "SayIt paused — protected application"
-                )
+                self._set_state(AppState.IDLE, "SayIt paused — protected application")
                 self._update_home_protected(sz)
                 return
 
@@ -619,6 +981,21 @@ class TranscribeApp(QObject):
         self._record_transcription(raw_text, enhanced_text, enhancement_name, cost)
         # The raw transcript is already recorded to history above, which is the
         # recovery backstop if insertion does not land.
+
+        # Dictate-to-Note routing (explicit opt-in). When active, the completed
+        # transcript is appended to the active note INSTEAD of being inserted
+        # into the foreground application. Ordinary dictation (the default) is
+        # unchanged. If routing fails, fall through to foreground insertion so a
+        # transcript is never silently dropped.
+        if self._dictate_to_note and final_text.strip():
+            if self._route_dictation_to_note(final_text):
+                logger.info(f"[job {job_id}] routed to note ({len(final_text)} chars)")
+                if final_text.strip():
+                    self._output_buffer.set_output(final_text)
+                self._update_home(AppState.IDLE, transcript=final_text)
+                self._set_state(AppState.IDLE)
+                return
+
         if self._timing is not None:
             self._timing.mark("insertion_start")
             self._timing.final_char_count = len(final_text)
@@ -630,9 +1007,7 @@ class TranscribeApp(QObject):
             # Transcript never reached the clipboard. It is still held in memory
             # (and in history if the user enabled it).
             where = "history" if self._settings.history_enabled else "the app"
-            logger.error(
-                "Text insertion failed: could not copy to clipboard."
-            )
+            logger.error("Text insertion failed: could not copy to clipboard.")
             self._set_state(
                 AppState.ERROR,
                 f"Could not insert text. It's kept in {where}.",
@@ -757,6 +1132,13 @@ class TranscribeApp(QObject):
         if self._settings_window is None:
             self._settings_window = SettingsWindow()
             self._settings_window.settings_changed.connect(self._on_settings_changed)
+            # Live re-dock the Notes panel when the dock-side preference changes.
+            try:
+                self._settings_window._configuration_tab.notes_dock_changed.connect(
+                    self._on_notes_dock_changed
+                )
+            except Exception as e:
+                logger.debug(f"Notes dock signal not connected: {e}")
 
         self._settings_window.show()
         self._settings_window.raise_()
@@ -765,9 +1147,7 @@ class TranscribeApp(QObject):
 
     def _on_settings_changed(self) -> None:
         old_model = self._transcriber.model_name
-        old_whisper_threads = getattr(
-            self._transcriber, "_whisper_num_threads", 4
-        )
+        old_whisper_threads = getattr(self._transcriber, "_whisper_num_threads", 4)
 
         self._settings = get_settings()
 
@@ -779,9 +1159,7 @@ class TranscribeApp(QObject):
         self._context_engine._settings = self._settings
 
         # Phase 8H: rebuild the orchestrator feature-config from new settings.
-        self._orchestrator = IntelligenceOrchestrator(
-            self._build_orchestrator_config()
-        )
+        self._orchestrator = IntelligenceOrchestrator(self._build_orchestrator_config())
         # Phase 9K: drop the cached experimental pipeline so a flag/threshold
         # change (including disabling = rollback) takes effect on the next job.
         self._post_asr_pipeline = None
@@ -868,6 +1246,38 @@ class TranscribeApp(QObject):
 
         self._hotkey_listener.stop()
         self._transcriber.unload()
+
+        # v0.2.0: autosave notes and tear down the Notes panel / Voice Widget so
+        # no spoken or typed note is lost and no top-level window outlives quit.
+        try:
+            if self._notes_panel is not None:
+                self._notes_panel.store.save()
+                self._notes_panel.close()
+        except Exception as e:
+            logger.error(f"Error saving notes during shutdown: {e}")
+        try:
+            if self._voice_widget is not None:
+                self._voice_widget.close()
+        except Exception as e:
+            logger.debug(f"Error closing voice widget during shutdown: {e}")
+
+        try:
+            if self._chat_panel is not None:
+                if getattr(self, "_chat_voice", None) is not None:
+                    self._chat_voice.shutdown()
+                self._chat_panel.close()
+        except Exception as e:
+            logger.debug(f"Error closing chat panel during shutdown: {e}")
+
+        # Stop the reminder scheduler cleanly (single QTimer; no bg threads).
+        try:
+            if getattr(self, "_reminder_scheduler", None) is not None:
+                self._reminder_scheduler.stop()
+            if getattr(self, "_reminders_panel", None) is not None:
+                self._reminders_panel.close()
+        except Exception as e:
+            logger.debug(f"Error stopping reminder scheduler during shutdown: {e}")
+
         self._tray.hide()
         self._recording_toast.hide()
         QApplication.quit()
@@ -896,7 +1306,8 @@ class TranscribeApp(QObject):
         self._load_user_initiated = user_initiated
 
         self._model_loader_thread = ModelLoaderThread(
-            model_name=model_name, parent=self,
+            model_name=model_name,
+            parent=self,
             whisper_num_threads=self._settings.whisper_small_cpu_threads,
         )
         self._model_loader_thread.state_changed.connect(self._on_engine_state_change)
@@ -913,27 +1324,44 @@ class TranscribeApp(QObject):
             logger.error(f"Model loading failed: {message}")
 
             # Safe startup fallback: if a NON-user-initiated (startup/default)
-            # load failed, the failed model is not already the fallback, and we
-            # have not already fallen back, try the known-compatible model once.
-            # Explicit user selections are never silently replaced — they show
-            # the error below instead.
+            # load failed, try a known-compatible model once. The fallback is
+            # LANGUAGE-AWARE: a Hindi/Kannada selection never silently falls
+            # back to the English-only Parakeet model. If no same-language
+            # fallback exists, we surface the error instead of switching
+            # languages. Explicit user selections are never silently replaced.
+            from .core.asr.language_routing import resolve_fallback_model
             from .core.settings.settings import FALLBACK_MODEL_ID
 
-            can_fallback = (
-                not self._load_user_initiated
-                and not self._fallback_attempted
-                and self._loading_model_id != FALLBACK_MODEL_ID
-            )
-            if can_fallback:
+            fallback_id = None
+            if not self._load_user_initiated and not self._fallback_attempted:
+                fallback_id = resolve_fallback_model(
+                    language=self._settings.dictation_language,
+                    failed_model_id=self._loading_model_id or "",
+                    english_fallback_id=FALLBACK_MODEL_ID,
+                )
+            if fallback_id is not None:
                 self._fallback_attempted = True
                 logger.warning(
-                    f"Default model '{self._loading_model_id}' failed to load "
-                    f"({message}); falling back to '{FALLBACK_MODEL_ID}'"
+                    f"Model '{self._loading_model_id}' failed to load "
+                    f"({message}); falling back to language-compatible "
+                    f"'{fallback_id}' for language "
+                    f"'{self._settings.dictation_language}'"
                 )
                 if self._settings_window is not None:
                     self._settings_window.set_loading(True)
-                self._start_model_loading(FALLBACK_MODEL_ID, user_initiated=False)
+                self._start_model_loading(fallback_id, user_initiated=False)
                 return
+            elif (
+                not self._load_user_initiated
+                and not self._fallback_attempted
+                and self._settings.dictation_language != "en"
+            ):
+                # No same-language fallback: do NOT cross to English. Report it.
+                logger.error(
+                    f"No {self._settings.dictation_language}-compatible fallback "
+                    f"model available after '{self._loading_model_id}' failed; "
+                    f"refusing to switch languages."
+                )
 
         if self._settings_window is not None:
             self._settings_window.set_loading(False)
@@ -972,8 +1400,105 @@ class TranscribeApp(QObject):
         logger.info("Starting deferred transcription model loading...")
         self._start_model_loading(self._settings.model_id)
 
+    def _reconcile_language_and_model(self) -> None:
+        """Ensure the configured model matches the dictation language.
+
+        Startup safety for live dictation: if ``dictation_language`` and
+        ``model_id`` disagree (e.g. Hindi selected but the English Parakeet
+        model is persisted), route to a language-compatible model so speech is
+        never transcribed with the wrong-language recognizer. If the language
+        is unknown/missing, derive it from the current model so existing
+        single-language (English) installs are unchanged. The chosen model may
+        be one that still needs downloading; that is surfaced normally rather
+        than silently transcribing with an incompatible model.
+        """
+        from .core.asr.language_routing import (
+            get_model_language,
+            is_compatible,
+            resolve_model_for_language,
+        )
+
+        lang = getattr(self._settings, "dictation_language", None) or "en"
+        model_id = self._settings.model_id
+
+        # Backfill the language from the model when the setting is absent, so a
+        # correctly-configured English install stays English and consistent.
+        model_lang = get_model_language(model_id)
+        if model_lang is not None and model_lang == lang:
+            return  # already consistent; no change
+
+        if (
+            model_lang is not None
+            and lang == "en"
+            and not getattr(self._settings, "_dictation_language_explicit", False)
+        ):
+            # Unknown/defaulted language but a known model: adopt the model's
+            # language so we don't force-switch a working install.
+            if self._settings.dictation_language != model_lang:
+                self._settings.dictation_language = model_lang
+                self._settings.save()
+            return
+
+        if is_compatible(lang, model_id):
+            return
+
+        route = resolve_model_for_language(lang, model_id)
+        if route.model_id and route.model_id != model_id:
+            logger.warning(
+                f"Dictation language '{lang}' is not served by model "
+                f"'{model_id}'; routing to compatible model "
+                f"'{route.model_id}' (installed={route.installed})."
+            )
+            self._settings.model_id = route.model_id
+            self._settings.save()
+
+
+# A stable, SayIt-specific Application User Model ID. Windows uses the AUMID to
+# attribute toast/balloon notifications to an app identity; without one, a
+# QSystemTrayIcon.showMessage() call can SUCCEED (no error) yet be silently
+# suppressed by the shell, so no toast ever appears. Must match the installer's
+# shortcut AUMID so packaged and from-source runs behave the same.
+WINDOWS_APP_USER_MODEL_ID = "VptrCipher.SayIt"
+
+
+def _set_windows_app_user_model_id() -> bool:
+    """Register an explicit AppUserModelID for this process on Windows.
+
+    Returns True if the ID was set, False otherwise (non-Windows, or the call
+    failed). This must run BEFORE the QSystemTrayIcon is created so the shell
+    associates toast notifications with our identity. No-op off Windows.
+    """
+    if not sys.platform.startswith("win"):
+        return False
+    try:
+        import ctypes
+
+        # SetCurrentProcessExplicitAppUserModelID(PCWSTR AppID) -> HRESULT (S_OK=0)
+        hr = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            WINDOWS_APP_USER_MODEL_ID
+        )
+        if hr == 0:
+            logger.info(
+                "Set Windows AppUserModelID=%s (enables tray toast delivery)",
+                WINDOWS_APP_USER_MODEL_ID,
+            )
+            return True
+        logger.warning(
+            "SetCurrentProcessExplicitAppUserModelID failed (HRESULT=0x%08X); "
+            "Windows may suppress tray notifications",
+            hr & 0xFFFFFFFF,
+        )
+        return False
+    except Exception as e:  # pragma: no cover - platform/ctypes defensive
+        logger.warning("Could not set Windows AppUserModelID: %s", e)
+        return False
+
 
 def main():
+    # Register the Windows app identity BEFORE any QSystemTrayIcon exists, so the
+    # shell routes reminder toasts to SayIt instead of silently dropping them.
+    _set_windows_app_user_model_id()
+
     app = QApplication(sys.argv)
     # Technical identifier stays SayIt (settings/paths/autostart); the
     # user-facing display name is set separately.
@@ -996,7 +1521,7 @@ def main():
     # Audio capture remains lazy and is tested separately when a user records.
     if os.environ.get("SAYIT_LINUX_SMOKE_TEST") == "1":
         if sys.platform.startswith("linux"):
-            from . import _bundled_portaudio_path, _bundled_portaudio
+            from . import _bundled_portaudio, _bundled_portaudio_path
 
             if _bundled_portaudio_path is None or _bundled_portaudio is None:
                 raise RuntimeError(

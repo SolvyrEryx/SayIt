@@ -1,285 +1,564 @@
-<div align="center">
-
 # SayIt
 
-**Local-first voice typing for your desktop.**
+<div align="center">
 
-**Authors:** Rahul J, Pranav, and J Noah
+### Your voice. Your words. Your workflow.
 
-Hold a hotkey, speak, release — your words are transcribed on-device and
-inserted at your cursor in any application.
+**Local-first desktop dictation and voice productivity.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-informational.svg)](LICENSE)
-[![Platform: Windows](https://img.shields.io/badge/platform-Windows%20x64-0a7bbb.svg)](#supported-platforms)
-[![ASR: Parakeet TDT 0.6B v2](https://img.shields.io/badge/ASR-Parakeet%20TDT%200.6B%20v2-5a4fcf.svg)](#models)
-[![Local-first](https://img.shields.io/badge/privacy-local--first-2e7d32.svg)](#privacy)
+Speak naturally, convert speech into text locally, manage notes and reminders, and work across your desktop without depending on cloud transcription.
 
-### [⬇ Download for Windows](https://github.com/VptrCipher/SayIt/releases/latest) · [⬇ Download for Linux](https://github.com/VptrCipher/SayIt/releases/latest) · [🌐 Website](https://sayit.ineffablebeast.in/) · [📦 Releases](https://github.com/VptrCipher/SayIt/releases)
+[![Release](https://img.shields.io/badge/release-v0.2.0-orange)](https://github.com/VptrCipher/SayIt/releases/tag/v0.2.0)
+[![Windows](https://img.shields.io/badge/Windows-x64-0078D4?logo=windows)](#downloads)
+[![Linux](https://img.shields.io/badge/Linux-x86__64-FCC624?logo=linux&logoColor=black)](#downloads)
+[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](#development)
+[![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+[![Privacy](https://img.shields.io/badge/Recognition-On--Device-2E7D32)](#privacy)
 
-<img src="docs/assets/sayit-home-idle.png" alt="SayIt — ready to speak" width="420">
+**[Download SayIt v0.2.0](https://github.com/VptrCipher/SayIt/releases/tag/v0.2.0)** · **[Official Website](https://vptrcipher.github.io/SayIt/)** · **[Report an Issue](https://github.com/VptrCipher/SayIt/issues)**
+
+<img src="docs/assets/sayit-home-idle.png" alt="SayIt desktop application" width="480">
+
+*Built by Rahul J, Noah J, and Pranav H.*
 
 </div>
 
-> **Release status:** `v0.1.2` has been **built and released**. The official
-> website is **https://sayit.ineffablebeast.in/**. See [Release status](#release-status)
-> for details.
+> [!IMPORTANT]
+> **SayIt v0.2.0 is available for Windows x64 and Linux x86_64.**
+>
+> macOS builds exist in CI, but public macOS distribution is deferred until Developer ID signing, notarization, and native acceptance are completed. No macOS installer is included in v0.2.0.
+>
+> Linux AppImage build and automated smoke tests have passed. Full hands-on X11 and Wayland desktop acceptance remains in progress.
 
 ---
 
 ## What is SayIt?
 
-SayIt is a lightweight push-to-talk voice-typing utility for the desktop. You
-hold a global hotkey (default **Ctrl + Space**), speak, and release — the
-complete utterance is transcribed **on your own machine** by a local
-speech-recognition model and the resulting text is inserted at your active
-cursor via the clipboard.
+SayIt is a local-first desktop voice-typing and productivity application.
 
-It is **not** a cloud dictation service. Core speech recognition runs locally;
-network access is only involved for the one-time model download and for an
-**optional, off-by-default** cloud text-enhancement feature.
+It combines on-device speech recognition with configurable text processing, a conversational assistant, a voice widget, local notes, and persistent reminders.
+
+The core dictation experience is simple:
+
+1. Hold your global recording shortcut.
+2. Speak naturally.
+3. Release the shortcut.
+4. SayIt transcribes your utterance on your computer.
+5. The resulting text is processed and inserted into your active application.
+
+Beyond dictation, SayIt provides a focused assistant for conversational interactions and reminder management, along with tools for capturing notes and organizing spoken information.
+
+**No cloud transcription account or API key is required for core dictation.**
 
 ## Why SayIt?
 
-- **Local-first speech recognition** — transcription runs on-device via
-  [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx); your audio does not leave
-  your computer for recognition.
-- **Technical terminology handling** — a deterministic, on-device correction
-  layer normalizes developer terms ("git hub" → GitHub, "ci slash cd" → CI/CD)
-  and clearly-dictated structured values (URLs, paths, versions), conservatively.
-- **Explicit personalization** — user-controlled vocabulary and snippets;
-  nothing is learned silently.
-- **Transparent correction with safe abstention** — ordinary prose is left
-  unchanged; the correction layer is explainable and can be turned off.
-- **Desktop-wide insertion** — works across applications through the system
-  clipboard + paste.
-- **Explicit privacy controls** — cloud enhancement and transcript history are
-  both **off by default**.
+| Principle | What it means |
+|---|---|
+| Local-first | Speech recognition runs on your own machine using Sherpa-ONNX. |
+| Desktop-wide | Dictated text can be inserted into applications that support clipboard paste. |
+| Multilingual | English, Hindi, and Kannada recognition with language-aware model routing. |
+| Configurable | Customize vocabulary, snippets, shortcuts, and formatting profiles. |
+| Explainable | Local correction rules are deterministic and can be disabled. |
+| Privacy-conscious | Cloud enhancement and saved history are opt-in. |
+| Productive | Use voice, notes, conversational interactions, and reminders in one desktop application. |
 
-## Core features
+## Features
 
-- Push-to-talk recording with a configurable global hotkey.
-- On-device transcription (default **Parakeet TDT 0.6B v2 INT8**; optional
-  **Whisper Small** higher-accuracy mode).
-- Deterministic local technical-term correction and structured formatting.
-- User vocabulary, snippets, and context-aware formatting profiles.
-- Esc cancellation of an in-progress recording/transcription.
-- First-run setup wizard (microphone, model, hotkey).
-- System-tray workflow with Ready / Recording / Processing / Error states.
-- Optional, opt-in transcript enhancement via a local (Ollama) or cloud LLM.
+### 1. Push-to-talk voice typing
 
-<div align="center">
-<img src="docs/assets/sayit-recording.png" alt="SayIt listening overlay" width="260">
-&nbsp;&nbsp;
-<img src="docs/assets/sayit-result.png" alt="SayIt transcription result" width="360">
-</div>
+- Configurable global keyboard shortcut.
+- Default shortcut: `Ctrl + Space`.
+- Hold to record and release to transcribe.
+- On-device speech recognition.
+- Clipboard-based text insertion.
+- `Esc` cancellation for active recording and transcription.
+- Visible Ready, Recording, Processing, and Error states.
+- Persistent settings and custom-hotkey restoration.
 
-## How it works
+<img src="docs/assets/sayit-recording.png" alt="SayIt recording interface" width="300">
+
+### 2. Multilingual speech recognition
+
+SayIt supports three dictation languages through compatible local recognition models.
+
+| Language | Model | Role |
+|---|---|---|
+| English | NVIDIA Parakeet TDT 0.6B v2 INT8 | Default, faster English recognition |
+| English | Whisper Small | Alternative, higher-accuracy-oriented model |
+| Hindi | IndicConformer Hindi INT8 | Hindi recognition |
+| Kannada | IndicConformer Kannada INT8 | Kannada recognition |
+
+Language-aware routing prevents Hindi or Kannada sessions from silently falling back to an English-only recognizer.
+
+### 3. Intelligent text processing
+
+SayIt includes a deterministic transcript-processing layer designed to improve dictated text without unnecessarily rewriting ordinary speech.
+
+Capabilities include:
+
+- Technical terminology normalization.
+- Custom vocabulary and preferred spellings.
+- Context-aware formatting profiles.
+- Text snippets and expansion.
+- Developer-oriented identifier formatting.
+- Explicit voice editing and correction commands.
+- Smart structure commands such as new lines and enumerations.
+- Protected application zones that can block recording before audio capture.
+
+Examples of terminology normalization:
+
+| Spoken input | Possible output |
+|---|---|
+| git hub | GitHub |
+| ci slash cd | CI/CD |
+| docker compose | Docker Compose |
+
+These transformations are rule-based and can be configured or disabled.
+
+### 4. Conversational assistant
+
+SayIt includes a dedicated assistant panel supporting typed and voice-based conversational input.
+
+Its focused productivity capabilities include:
+
+- Conversational input and responses.
+- Voice input through the existing recording and transcription pipeline.
+- Reminder creation and management.
+- Clarification when a request is ambiguous.
+- Proposed actions with explicit confirmation before scheduling reminders.
+- Correction of reminder titles and dates.
+- Reminder listing, rescheduling, snoozing, and cancellation.
+
+Example:
+
+**You:** Remind me about a meeting tomorrow at 10 AM.
+
+**SayIt:** Creates a reminder proposal for your review.
+
+You can confirm or dismiss the proposal before it becomes an active reminder.
+
+The assistant is designed around controlled actions, not unrestricted autonomous execution.
+
+### 5. Voice Widget
+
+A persistent desktop widget provides quick access to recording and note-taking.
+
+- Draggable desktop placement.
+- Record and stop controls.
+- Recording-state visibility.
+- Escape-to-cancel support.
+- Quick access to Notes.
+- Dictate-to-Note routing.
+
+Dictate-to-Note is disabled by default. Normal dictation continues inserting text into the foreground application unless you explicitly enable note routing.
+
+### 6. Notes panel
+
+Capture and organize information without switching applications.
+
+- Standalone docked Notes panel.
+- Local autosave.
+- Persistence across application restarts.
+- Dictation-to-note support.
+- Separate from ordinary foreground text insertion.
+
+Notes are stored locally and are not automatically sent to a cloud service.
+
+### 7. Reminder management
+
+SayIt provides a persistent reminder system with:
+
+- Natural-language reminder proposals.
+- Explicit confirmation before scheduling.
+- Local persistence.
+- Rescheduling and renaming.
+- Snoozing.
+- Completion and cancellation.
+- Desktop notification integration where supported.
+
+**Important:** SayIt must be running to deliver reminders at their scheduled times. Overdue reminders are reconciled when the application starts again; SayIt is not an always-running operating-system background service.
+
+### 8. Local-first intelligence
+
+The intelligence layer adds structured processing around the speech-recognition pipeline.
+
+It includes:
+
+- Context-aware formatting.
+- Developer mode.
+- Snippet expansion.
+- Remember Correction with explicit user approval.
+- Safe Zones.
+- Voice Edit and Backtrack.
+- Smart Structure.
+- Explicit personalization.
+
+The correction pipeline does not require an LLM or cloud connection.
+
+---
+
+## How SayIt works
 
 ```mermaid
-flowchart LR
-    A["Hold hotkey · speak · release"] --> B[Audio Recorder]
-    B --> C[Backend Manager]
-    C --> D["Parakeet CPU Backend<br/>(sherpa-onnx, on-device)"]
-    D --> E[Transcript Intelligence]
-    E --> F[Clipboard / Text Insertion]
-    F --> G[Your active application]
-   subgraph TI [Transcript Intelligence]
-      E1[terminology retrieval] --> E2[correction]
-      E2 --> E3[ranking]
-      E3 --> E4[explicit personalization]
-    end
+flowchart TD
+    A["User holds recording shortcut"] --> B["Microphone capture"]
+    B --> C["Local Sherpa-ONNX ASR"]
+    C --> D["Language-aware model routing"]
+    D --> E["Transcript processing"]
+    E --> F["Text correction and formatting"]
+    F --> G["Clipboard / paste insertion"]
+    G --> H["Active desktop application"]
+
+    C --> I["Optional conversation workflow"]
+    I --> J["Assistant / reminder proposals"]
+    J --> K["User confirmation"]
 ```
 
-Dictation is **one-shot**: the full utterance is decoded by the local offline
-recognizer when you release the hotkey, then the correction layer runs, then the
-text is inserted. It is not a streaming/real-time system.
+SayIt processes a completed utterance after the recording shortcut is released. It does not continuously transcribe speech in real time.
 
-## Architecture
+The production-validated recognition path uses CPU inference. CUDA, DirectML, and Vulkan are experimental research directions, not supported end-to-end production backends.
 
-SayIt uses a hardware-adaptive backend abstraction. Only the **CPU backend is
-production-validated** today; GPU paths are experimental research and are **not**
-active.
+## Downloads
 
-```mermaid
-flowchart TB
-    U[User] --> HK[Global Hotkey]
-    HK --> REC[Audio Recorder]
-    REC --> BM[ASR Backend Manager]
-    BM --> CPU["ParakeetCPUBackend — VALIDATED (default)"]
-    BM -. experimental .-> DML[DirectML]
-    BM -. experimental .-> CUDA[CUDA]
-    BM -. experimental .-> VK[Vulkan]
-    CPU --> TI[Transcript Intelligence]
-    TI --> INS[Clipboard / Insertion]
-    INS --> APP[Target Application]
+**Latest release: [SayIt v0.2.0](https://github.com/VptrCipher/SayIt/releases/tag/v0.2.0)**
+
+### Windows x64
+
+| Installer | Download | Description |
+|---|---|---|
+| On-demand | [SayIt-Setup-x64.exe](https://github.com/VptrCipher/SayIt/releases/download/v0.2.0/SayIt-Setup-x64.exe) | Smaller installer. Speech models are downloaded when needed. |
+| Full Offline | [SayIt-Setup-x64-Offline.exe](https://github.com/VptrCipher/SayIt/releases/download/v0.2.0/SayIt-Setup-x64-Offline.exe) | Includes four validated INT8 speech models. |
+
+**The Full Offline Windows installer includes:**
+
+1. English Fast — Parakeet TDT 0.6B v2 INT8.
+2. English alternative — Whisper Small INT8.
+3. Hindi — IndicConformer Hindi INT8.
+4. Kannada — IndicConformer Kannada INT8.
+
+The bundled models are loaded from installation resources and are not duplicated into the per-user model cache.
+
+### Linux x86_64
+
+| Package | Download | Description |
+|---|---|---|
+| AppImage | [SayIt-0.2.0-Linux-x86_64.AppImage](https://github.com/VptrCipher/SayIt/releases/download/v0.2.0/SayIt-0.2.0-Linux-x86_64.AppImage) | Packaged desktop application. Models are downloaded when needed. |
+
+Run the AppImage:
+
+```bash
+chmod +x SayIt-0.2.0-Linux-x86_64.AppImage
+./SayIt-0.2.0-Linux-x86_64.AppImage
 ```
 
-> **Experimental:** DirectML/CUDA/Vulkan are research tracks. DirectML
-> encoder/joiner GPU execution has been verified in isolation, but complete
-> end-to-end Parakeet TDT GPU transcription is **not** validated. `AUTO`
-> resolves to **CPU**.
+### macOS
+
+macOS is not a public download target for v0.2.0.
+
+Native arm64 and Intel build jobs have passed packaging CI, but public distribution remains deferred pending Apple Developer ID signing, notarization, and native acceptance.
+
+### Checksums
+
+The release contains:
+
+- [`checksums.txt`](https://github.com/VptrCipher/SayIt/releases/download/v0.2.0/checksums.txt)
+- [`release-manifest.json`](https://github.com/VptrCipher/SayIt/releases/download/v0.2.0/release-manifest.json)
+- Individual `.sha256` checksum files.
+
+Verify your downloaded installer before running it.
+
+**Windows PowerShell:**
+
+```powershell
+Get-FileHash .\SayIt-Setup-x64.exe -Algorithm SHA256
+```
+
+**Linux:**
+
+```bash
+sha256sum SayIt-0.2.0-Linux-x86_64.AppImage
+```
+
+Compare the resulting hash with the corresponding value in `checksums.txt` or the file-specific checksum.
+
+---
+
+## Installation and first use
+
+### Windows
+
+1. Download the on-demand or Full Offline installer.
+2. Run the installer and complete setup.
+3. Launch SayIt.
+4. Configure your microphone and preferred language.
+5. Select a compatible speech-recognition model if needed.
+6. Place your cursor in an application that accepts text input.
+7. Hold `Ctrl + Space`, speak, and release.
+
+Use the Full Offline installer when you want all four supported speech models available without downloading those model weights separately.
+
+### Linux
+
+1. Download the AppImage.
+2. Make the file executable.
+3. Launch the application.
+4. Configure the microphone, language, model, and hotkey.
+5. Grant or enable the desktop permissions needed for global input where applicable.
+
+Speech model downloads require network access the first time. Previously downloaded models can subsequently be used locally.
+
+---
 
 ## Privacy
 
-- **Core speech recognition runs locally** on your computer.
-- **Cloud enhancement is optional and off by default.** It only sends transcript
-  text when you explicitly enable it and configure a remote provider. Audio is
-  never sent for enhancement.
-- **Transcript history is off by default.** When enabled, completed transcripts
-  are stored in a local file.
-- **Model download** requires network access and is separate from speech
-  recognition — downloading a model is not cloud transcription.
-- No analytics or telemetry are added by the project.
+Privacy is a core design principle of SayIt.
 
-SayIt does **not** claim to be "100% private" or "fully offline in every
-configuration", because model downloads and optional cloud enhancement involve
-the network. See the in-app **Privacy & Data** settings.
+| Component | Default behavior |
+|---|---|
+| Speech recognition | Runs locally |
+| Microphone audio for core ASR | Not sent to a cloud transcription service |
+| Cloud transcript enhancement | Disabled |
+| Transcript history | Disabled |
+| Conversation history | Disabled |
+| Notes | Stored locally |
+| Reminders | Stored locally |
+| Vocabulary and snippets | User-controlled |
+| Telemetry | No project-added analytics or telemetry |
 
-## Intelligence / correction
+### Optional cloud enhancement
 
-The on-device correction layer is deterministic and explainable: the same input,
-context, and settings always produce the same output, and each change is
-attributable to a specific rule. It normalizes common technical terms and
-clearly-structured values, leaves ordinary prose untouched, abstains when
-evidence is weak, and can be disabled. It does not use an LLM, the network, the
-clipboard, or screen contents.
+SayIt can optionally integrate with local or remote language-model providers for transcript-text enhancement.
 
-## Performance
+When a remote provider is explicitly enabled and configured, transcript text can be sent to that provider.
 
-Measured on one development machine under a warm steady-state benchmark — a
-**reference point, not a guarantee** for other hardware.
+This is separate from core speech recognition. Raw microphone audio is not sent for cloud transcription by this feature.
 
-| Metric | p50 | p95 |
-|---|---:|---:|
-| ASR (Parakeet int8, warm) | ≈ 739 ms | ≈ 1795 ms |
-| Stop → text (ASR + intelligence, excluding insertion and GUI) | ≈ 836 ms | ≈ 2049 ms |
+### Offline behavior
 
-- **Environment:** AMD Ryzen 5 4600G (6c/12t), Windows, CPU inference,
-  Parakeet TDT 0.6B v2 INT8, warm (model already loaded).
-- **Methodology:** 60 warm runs over fixed benchmark clips. The stop → text
-  figure covers ASR plus the on-device intelligence/correction stage; cold model
-  initialization (~a few seconds) and the clipboard/paste insertion + GUI
-  rendering are measured separately and excluded here.
+The Full Offline Windows installer bundles all four speech models, allowing speech recognition with those models without a separate model download.
 
-No "fastest", "best", or "zero-latency" claims are made. Your results will
-differ by CPU and utterance length.
+The smaller Windows installer and Linux AppImage obtain speech models on demand.
 
-## Models
+Optional remote enhancement requires an internet connection and a configured provider.
 
-| Role | Model | Notes |
+SayIt should therefore be understood as a local-first application, rather than a claim that every configuration and feature is permanently offline.
+
+---
+
+## Platform support
+
+| Platform | Distribution status | Validation |
 |---|---|---|
-| **Default** | Parakeet TDT 0.6B v2 INT8 | On-device transducer; downloaded on first use. |
-| **Optional** | Whisper Small | Higher-accuracy mode; slower end-to-end. |
+| Windows x64 | Published | Installer builds, offline-model integrity, and Windows notification delivery tested |
+| Linux x86_64 | Published | AppImage build, packaged launch smoke test, and artifact validation passed; hands-on X11/Wayland acceptance remains pending |
+| macOS Apple Silicon | Not publicly distributed | Native CI packaging passed; signing, notarization, and interactive acceptance pending |
+| macOS Intel | Not publicly distributed | Native CI packaging passed; signing, notarization, and interactive acceptance pending |
 
-Model weights are **downloaded on demand** (roughly 100 MB–1 GB depending on the
-model) into your local app-data folder and are **not** bundled with the
-installer. No relative accuracy/speed claim is made between models beyond what
-has been measured.
+### Linux desktop notes
 
-## Installation
+**X11**
 
-### Normal users
+The current hotkey path uses `pynput`. Clipboard insertion uses available system utilities such as `xclip` or `xsel`.
 
-The `v0.1.2` release is built and released. Download it from the
-[Releases page](https://github.com/VptrCipher/SayIt/releases/latest) or visit
-[https://sayit.ineffablebeast.in/](https://sayit.ineffablebeast.in/). The
-release artifacts are built by CI and named:
+**Wayland**
 
-- **Windows:** `SayIt-Setup-x64.exe` (Inno Setup installer). Unsigned; see
-  [Release status](#release-status) for the expected SmartScreen notice.
-- **Linux:** `SayIt-0.1.2-Linux-x86_64.AppImage`. Mark it executable
-  (`chmod +x`) and run.
+SayIt uses the GlobalShortcuts portal where supported by the desktop environment.
 
-Verify your download against the published checksums (`checksums.txt` and the
-per-file `.sha256`) on the release page.
+Some Wayland compositors restrict synthetic keyboard input. When paste automation is unavailable, SayIt keeps the transcript available on the clipboard and asks the user to paste it manually.
 
-Normal users do **not** need Python, a compiler, CUDA, or any SDK.
+Actual behavior can vary by compositor and desktop environment. Full interactive Linux acceptance has not yet been completed for every supported session.
 
-### From source
+### macOS notes
+
+Native builds exist for Apple Silicon and Intel, but v0.2.0 does not distribute macOS installers.
+
+A future public macOS release requires:
+- Developer ID Application signing.
+- Hardened Runtime and appropriate entitlements.
+- Apple notarization.
+- Stapling and Gatekeeper validation.
+- Real microphone, Accessibility, hotkey, clipboard, and Notification Center testing.
+
+---
+
+## Known limitations
+
+- Dictation is utterance-based, not streaming transcription.
+- CPU is the validated production inference backend.
+- GPU acceleration is experimental.
+- First-time model acquisition requires network access unless the chosen model is bundled in the Windows Full Offline installer.
+- Linux global hotkeys and clipboard insertion can vary between X11 and Wayland.
+- Some applications restrict simulated paste or clipboard interaction.
+- Reminders require SayIt to be running for on-time notification delivery.
+- macOS installers are not available in v0.2.0.
+- Linux hands-on desktop acceptance remains outstanding.
+
+---
+
+## Troubleshooting
+
+### The hotkey does not work
+
+- Confirm SayIt is running.
+- Check that another application is not using the same shortcut.
+- Verify the configured shortcut in Settings.
+- On Linux, identify whether the session is X11 or Wayland and check the desktop's global-shortcut permissions.
+
+### SayIt does not transcribe
+
+- Confirm microphone access.
+- Check the selected language and compatible model.
+- Verify that the model has completed downloading, unless it is bundled.
+- Check available system memory and storage.
+
+### Transcribed text is not inserted
+
+- Focus a normal editable text field.
+- Check clipboard availability.
+- On Linux X11, verify `xclip` or `xsel` availability.
+- Under Wayland, manual paste may be required when synthetic paste is restricted.
+
+### Why does the smaller installer download models?
+
+The on-demand installer keeps the initial download smaller. Speech-recognition weights are obtained when required.
+
+The Full Offline Windows installer includes all four intended models inside the installation payload.
+
+### Why did a reminder not appear?
+
+Check that SayIt is running, the reminder is active, and desktop notifications are enabled. Operating-system notification settings such as Do Not Disturb can suppress visible banners.
+
+For an unresolved issue, open a [GitHub issue](https://github.com/VptrCipher/SayIt/issues). Include your OS, desktop session where relevant, selected model, and reproducible steps. Do not include private transcripts, credentials, or access tokens.
+
+---
+
+## Technology stack
+
+| Layer | Technology |
+|---|---|
+| Application language | Python 3.12+ |
+| Desktop interface | PySide6 / Qt |
+| Speech recognition | Sherpa-ONNX |
+| Models | Parakeet, Whisper, IndicConformer |
+| Audio processing | sounddevice, NumPy |
+| Global input | pynput and platform-specific hotkey backends |
+| Text insertion | Clipboard integration and OS-specific paste |
+| Data validation | Pydantic |
+| Optional LLM integration | LiteLLM and compatible local/remote providers |
+| Windows packaging | Briefcase + Inno Setup |
+| Linux packaging | Briefcase + AppImage |
+| macOS packaging | Briefcase + native DMG tooling |
+| Testing | pytest, pytest-qt |
+| CI/CD | GitHub Actions |
+| Website | GitHub Pages |
+
+---
+
+## Development
+
+### Prerequisites
+
+- Python 3.12 or newer.
+- [uv](https://docs.astral.sh/uv/).
+- A supported desktop operating system.
+- Microphone access for actual dictation testing.
+
+### Clone and install
 
 ```bash
 git clone https://github.com/VptrCipher/SayIt.git
 cd SayIt
+
 uv sync --frozen
+```
+
+### Run SayIt
+
+```bash
 uv run python -m sayit
 ```
 
-## Supported platforms
-
-| Platform | Status |
-|---|---|
-| Windows x64 | Tested and launched release target; packaged install + live dictation validated. |
-| Linux x64 | AppImage build target; less validated. Hotkey capture may require X11; clipboard needs `xclip`. |
-| macOS | Not targeted. |
-
-GPU acceleration (NVIDIA/AMD/Intel) is **experimental research only** and not a
-supported production backend.
-
-## Release status
-
-`v0.1.2` is the current **bugfix release**. What is verified:
-
-- ✅ Automated test suite: 916 passed, 5 deselected.
-- ✅ Warm performance measured (see [Performance](#performance)).
-- ✅ Privacy defaults verified (cloud enhancement + history off by default).
-- ✅ Dependencies pinned and reproducible (`uv sync --frozen`).
-- ✅ Packaged application and live desktop usage have been tested.
-- ✅ SayIt has been launched at **https://sayit.ineffablebeast.in/**.
-- ✅ Custom hotkeys persist across restarts and are re-registered immediately when changed.
-- ℹ️ The Windows installer is unsigned; Windows SmartScreen may show a
-  "Windows protected your PC" notice on first run (choose *More info →
-  Run anyway*).
-
-## Development
+### Run tests
 
 ```bash
-uv sync --frozen            # install the exact validated environment
-uv run pytest -m "not slow" # run the test suite (headless)
-uv run python -m sayit      # run the app
+uv run pytest -m "not slow"
 ```
 
-The validated runtime is **sherpa-onnx 1.13.8 + sherpa-onnx-core 1.13.8**
-(pinned together). Do not upgrade either without re-validation.
+### Project structure
 
-## Project structure
-
-```
+```text
 SayIt/
-├── src/sayit/            # application package (ASR, intelligence, UI, settings)
-├── tests/                # test suite
-├── scripts/build.py      # Briefcase build driver
-├── website/              # product website (GitHub Pages)
-├── installer.iss         # Windows Inno Setup script
-└── pyproject.toml        # project + Briefcase configuration
+├── .github/
+│   └── workflows/           # CI and release workflows
+├── docs/                    # Documentation and screenshots
+├── icons/                   # Application icons
+├── scripts/                 # Build and model utilities
+├── src/
+│   └── sayit/
+│       ├── core/
+│       │   ├── asr/          # Speech recognition and models
+│       │   ├── conversation/ # Conversational assistant
+│       │   ├── reminders/    # Reminder engine and notifications
+│       │   └── intelligence/ # Local text-processing pipeline
+│       ├── ui/               # Desktop interface
+│       └── utils/            # Platform capabilities
+├── tests/                   # Automated test suite
+├── website/                 # Product website and download center
+├── installer.iss            # Windows on-demand installer
+├── installer-offline.iss    # Windows Full Offline installer
+├── pyproject.toml           # Dependencies and packaging
+├── uv.lock                  # Locked dependencies
+└── CHANGELOG.md             # Version history
 ```
 
-## Roadmap
+---
 
-- Hardware-adaptive GPU backends (DirectML first) — pending end-to-end
-  validation.
-- Further ASR latency optimization.
-- Broader platform validation.
+## Release history
 
-These are research directions, not dated commitments; experimental work is not
-production-ready.
+See [CHANGELOG.md](CHANGELOG.md) for the complete development and release history.
 
-## Contributing
+### v0.2.0
 
-Contributions are welcome. Please fork, create a feature branch, run
-`uv run pytest -m "not slow"`, and open a pull request. See
-[`CONTRIBUTING.md`](CONTRIBUTING.md) if present.
+- Unified local-first dictation improvements.
+- English, Hindi, and Kannada recognition.
+- Four-model Full Offline Windows installer.
+- Conversational assistant and voice input.
+- Voice Widget and Notes panel.
+- Persistent reminder management.
+- Windows WinRT reminder notifications.
+- Platform capability abstraction for Windows, Linux, and macOS.
+- Linux AppImage distribution.
+- Native macOS build pipeline, with public distribution deferred.
+- Expanded automated test coverage and build-integrity validation.
 
-## License
+**Published platforms:** Windows x64 and Linux x86_64.
 
-SayIt is released under the **MIT License** — see [`LICENSE`](LICENSE).
-Model weights and runtime dependencies are governed by their own licenses; see
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+**Deferred:** Public macOS distribution and full native Linux desktop acceptance.
 
-## Acknowledgements
+---
 
-- [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0) — on-device
-  ASR inference.
-- [NVIDIA Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2)
-  (CC-BY-4.0) — default speech model (downloaded, not bundled).
-- [OpenAI Whisper](https://github.com/openai/whisper) (MIT) — optional models.
-- [PySide6 / Qt](https://www.qt.io/) (LGPLv3) — desktop UI.
+## License and third-party acknowledgements
+
+SayIt's application source is distributed under the [MIT License](LICENSE).
+
+Speech models, runtime dependencies, and bundled third-party components retain their respective licenses. Review [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) before redistribution or modification.
+
+Key upstream projects:
+
+- [Sherpa-ONNX](https://github.com/k2-fsa/sherpa-onnx) — local speech-recognition runtime.
+- [NVIDIA Parakeet TDT 0.6B v2](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) — English speech recognition.
+- [OpenAI Whisper](https://github.com/openai/whisper) — alternative English recognition.
+- [AI4Bharat](https://github.com/AI4Bharat) — Indic speech-recognition models.
+- [PySide6 / Qt](https://www.qt.io/) — desktop interface.
+
+---
+
+<div align="center">
+
+### Speak naturally. Stay in control.
+
+**Local-first dictation for the way you work.**
+
+[Download SayIt v0.2.0](https://github.com/VptrCipher/SayIt/releases/tag/v0.2.0) · [Official Website](https://vptrcipher.github.io/SayIt/) · [GitHub Repository](https://github.com/VptrCipher/SayIt)
+
+</div>

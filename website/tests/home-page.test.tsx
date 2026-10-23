@@ -42,13 +42,16 @@ describe("Home page (landing redesign)", () => {
 
   it("shows the live release announcement and official artifact links", () => {
     render(<HomePage />);
+    // The page's own release statement (the slim AnnouncementBar lives in the
+    // layout, not this page component, so assert the page-level copy here).
     expect(
-      screen.getByText("The latest SayIt release is live for Windows and Linux."),
+      screen.getByText(/Windows and Linux installers are available/i),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Download SayIt" })).toHaveAttribute(
-      "href",
-      "/download",
-    );
+    const dl = screen.getAllByRole("link", { name: "Download SayIt" });
+    expect(dl.length).toBeGreaterThanOrEqual(1);
+    for (const link of dl) {
+      expect(link).toHaveAttribute("href", "/download");
+    }
   });
 
   it("credits GitHub as the artifact home", () => {
@@ -86,7 +89,10 @@ describe("Home page (landing redesign)", () => {
 
     expect(windows).toMatch(/supported/i);
     expect(linux).toMatch(/partially supported/i);
-    expect(linux).toMatch(/wayland/i);
+    // Documented Linux behavior (README platform table): hotkeys may require
+    // X11 and clipboard insertion needs xclip.
+    expect(linux).toMatch(/x11/i);
+    expect(linux).toMatch(/xclip/i);
     expect(macos).toMatch(/not supported/i);
     expect(macos).toMatch(/no macos build/i);
   });

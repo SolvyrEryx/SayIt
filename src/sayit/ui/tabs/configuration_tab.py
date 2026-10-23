@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from ...core.asr.models.registry import (
     delete_asr_model,
     get_all_models_with_status,
+    get_model_download_status,
     is_model_downloaded,
 )
 from ...core.audio import AudioRecorder
@@ -35,6 +36,9 @@ from ..download_dialog import ModelDownloadThread
 class ConfigurationTab(QWidget):
 
     reset_requested = Signal()
+    # Emitted (with "left"/"right") when the user changes the Notes dock side,
+    # so a live Notes panel can re-dock immediately.
+    notes_dock_changed = Signal(str)
 
     def __init__(self, settings: Settings, parent=None):
         super().__init__(parent)
@@ -58,6 +62,7 @@ class ConfigurationTab(QWidget):
         layout.setSpacing(12)
 
         layout.addWidget(self._create_general_section())
+        layout.addWidget(self._create_notes_section())
         layout.addWidget(self._create_audio_section())
         layout.addWidget(self._create_hotkey_section())
         layout.addWidget(self._create_correction_section())
@@ -171,7 +176,7 @@ class ConfigurationTab(QWidget):
         group_layout = QVBoxLayout(group)
 
         self._technical_correction_cb = QCheckBox(
-            "Normalize common technical terms (e.g. \"git hub\" \u2192 GitHub)"
+            'Normalize common technical terms (e.g. "git hub" \u2192 GitHub)'
         )
         self._technical_correction_cb.setToolTip(
             "Deterministic, local normalization of registered developer terms "
@@ -188,12 +193,10 @@ class ConfigurationTab(QWidget):
         )
         self._structured_formatting_cb.setToolTip(
             "Conservative local formatting of clearly structured values, e.g. "
-            "\"three point two\" \u2192 3.2, \"ninety five percent\" \u2192 95%. "
+            '"three point two" \u2192 3.2, "ninety five percent" \u2192 95%. '
             "Ordinary prose is left unchanged."
         )
-        self._structured_formatting_cb.setAccessibleName(
-            "Format structured values"
-        )
+        self._structured_formatting_cb.setAccessibleName("Format structured values")
         group_layout.addWidget(self._structured_formatting_cb)
 
         note = QLabel(
@@ -264,6 +267,94 @@ class ConfigurationTab(QWidget):
         layout.addWidget(group)
         return widget
 
+    def _create_notes_section(self) -> QWidget:
+        """Notes panel preferences (v0.2.0): which edge the panel docks to."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        notes_group = QGroupBox("Notes panel")
+        notes_layout = QFormLayout(notes_group)
+
+        self._notes_dock_combo = QComboBox()
+        self._notes_dock_combo.addItem("Right (default)", "right")
+        self._notes_dock_combo.addItem("Left", "left")
+        current = getattr(self._settings, "notes_dock_side", "right")
+        idx = self._notes_dock_combo.findData(
+            current if current in ("left", "right") else "right"
+        )
+        self._notes_dock_combo.setCurrentIndex(max(0, idx))
+        self._notes_dock_combo.currentIndexChanged.connect(self._on_notes_dock_changed)
+        notes_layout.addRow("Dock side:", self._notes_dock_combo)
+
+        hint = QLabel(
+            "The standalone Notes panel docks to this screen edge. Notes are "
+            "stored locally and never leave your machine."
+        )
+        hint.setStyleSheet("color: gray; font-size: 11px;")
+        hint.setWordWrap(True)
+        notes_layout.addRow(hint)
+
+        # Assistant conversation retention (v0.2.0). Separate, explicit opt-in
+        # from transcript history; OFF by default.
+        self._conversation_history_cb = QCheckBox("Save assistant conversation history")
+        notes_layout.addRow(self._conversation_history_cb)
+        conv_hint = QLabel(
+            "Save conversations and their task context across restarts. When "
+            "disabled, conversation history is kept in memory only and is not "
+            "persisted. This is independent of transcript history. Executed "
+            "actions and credentials are never stored."
+        )
+        conv_hint.setStyleSheet("color: gray; font-size: 11px;")
+        conv_hint.setWordWrap(True)
+        notes_layout.addRow(conv_hint)
+
+        self._clear_conversation_btn = QPushButton("Clear saved conversations")
+        self._clear_conversation_btn.setToolTip(
+            "Delete the stored assistant conversation file. Notes and settings "
+            "are not affected."
+        )
+        self._clear_conversation_btn.clicked.connect(self._on_clear_conversation_history)
+        notes_layout.addRow(self._clear_conversation_btn)
+
+        reminders_group = QGroupBox("Reminders")
+        reminders_layout = QVBoxLayout(reminders_group)
+        reminders_hint = QLabel(
+            "Scheduled reminders fire as desktop notifications while SayIt is "
+            "running. SayIt does not run a background service, so if it is closed "
+            "when a reminder is due, you are notified at the next launch. Reminders "
+            "are stored locally and independently of conversation history."
+        )
+        reminders_hint.setStyleSheet("color: gray; font-size: 11px;")
+        reminders_hint.setWordWrap(True)
+        reminders_layout.addWidget(reminders_hint)
+
+        layout.addWidget(notes_group)
+        layout.addWidget(reminders_group)
+        return widget
+
+    def _on_clear_conversation_history(self) -> None:
+        """Delete ONLY the stored assistant conversation file (not notes/settings)."""
+        from ...core.conversation import ConversationStore
+
+        try:
+            ConversationStore(enabled=True).clear()
+            QMessageBox.information(
+                self, "Cleared", "Saved assistant conversations were removed."
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            QMessageBox.warning(self, "Clear failed", f"Could not clear conversations: {e}")
+
+    def _on_notes_dock_changed(self, index: int) -> None:
+        side = self._notes_dock_combo.currentData()
+        if side not in ("left", "right"):
+            side = "right"
+        self._settings.notes_dock_side = side
+        try:
+            self._settings.save()
+        except OSError:
+            pass
+        self.notes_dock_changed.emit(side)
+
     def _on_override_changed(self, index: int) -> None:
         token = self._context_override_combo.currentData()
         if token and token != AUTO:
@@ -273,7 +364,6 @@ class ConfigurationTab(QWidget):
             self._context_profile_desc.setText(
                 "Automatic: the profile follows the active application."
             )
-
 
     def _create_intelligence_section(self) -> QWidget:
         """Phase 8B-8G feature toggles (local intelligence layer)."""
@@ -327,8 +417,9 @@ class ConfigurationTab(QWidget):
         (Whisper Small, opt-in). Maps to settings.model_id via the speech_mode
         module; NOT coupled to the experimental intelligence flag. Reuses the
         existing model download infrastructure for the optional model."""
+        from PySide6.QtWidgets import QButtonGroup, QRadioButton
+
         from ...core.asr import speech_mode as SM
-        from PySide6.QtWidgets import QRadioButton, QButtonGroup
 
         self._SM = SM
         widget = QWidget()
@@ -361,7 +452,9 @@ class ConfigurationTab(QWidget):
                 dl = QPushButton("Download")
                 dl.setAccessibleName(f"Download {m.label} model")
                 dl.setProperty("mode", m.mode)
-                dl.clicked.connect(lambda _=False, mm=m.mode: self._on_download_mode(mm))
+                dl.clicked.connect(
+                    lambda _=False, mm=m.mode: self._on_download_mode(mm)
+                )
                 self._mode_download_btn = dl
                 row_l.addWidget(dl)
             group_layout.addWidget(row)
@@ -402,11 +495,11 @@ class ConfigurationTab(QWidget):
         ``settings.whisper_small_cpu_threads``. NOT coupled to the experimental
         intelligence flag. Deliberately non-promissory about any speedup.
         """
-        from PySide6.QtWidgets import QRadioButton, QButtonGroup
+        from PySide6.QtWidgets import QButtonGroup, QRadioButton
 
         from ...core.settings.settings import (
-            WHISPER_CPU_THREAD_CHOICES,
             DEFAULT_WHISPER_CPU_THREADS,
+            WHISPER_CPU_THREAD_CHOICES,
         )
 
         widget = QWidget()
@@ -421,7 +514,9 @@ class ConfigurationTab(QWidget):
         self._whisper_threads_group = QButtonGroup(self)
         self._whisper_threads_radios = {}
         for value in WHISPER_CPU_THREAD_CHOICES:
-            label = "Default (4)" if value == DEFAULT_WHISPER_CPU_THREADS else str(value)
+            label = (
+                "Default (4)" if value == DEFAULT_WHISPER_CPU_THREADS else str(value)
+            )
             rb = QRadioButton(label)
             rb.setAccessibleName(f"Whisper Small CPU threads {label}")
             rb.setProperty("threads", value)
@@ -554,8 +649,8 @@ class ConfigurationTab(QWidget):
         group_layout.addLayout(btn_row)
 
         note = QLabel(
-            "Enter part of an application name (e.g. \"keepass\", \"1password\", "
-            "\"bank\"). Matched against the foreground app/window locally. No "
+            'Enter part of an application name (e.g. "keepass", "1password", '
+            '"bank"). Matched against the foreground app/window locally. No '
             "screenshots, clipboard, or page contents are read; no audio is "
             "recorded while a protected app is active."
         )
@@ -576,7 +671,6 @@ class ConfigurationTab(QWidget):
     def _on_remove_protected(self) -> None:
         for item in self._protected_list.selectedItems():
             self._protected_list.takeItem(self._protected_list.row(item))
-
 
     def _create_asr_model_section(self) -> QWidget:
         widget = QWidget()
@@ -633,7 +727,14 @@ class ConfigurationTab(QWidget):
         self._model_combo.clear()
 
         for model, status in get_all_models_with_status():
-            indicator = "✓" if status == "downloaded" else "↓"
+            # Distinguish bundled (shipped by the offline installer, available
+            # with no download) from cache-downloaded and not-present.
+            if status == "downloaded":
+                indicator = "✓"
+            elif status == "bundled":
+                indicator = "◆ bundled"
+            else:
+                indicator = "↓"
             display_text = f"{model.name}  {indicator}"
             self._model_combo.addItem(display_text, model.id)
 
@@ -650,14 +751,26 @@ class ConfigurationTab(QWidget):
     def _update_button_states(self) -> None:
         current_data = self._model_combo.currentData()
         is_active_model = current_data == self._settings.model_id
-        downloaded = is_model_downloaded(current_data) if current_data else True
+        status = (
+            get_model_download_status(current_data) if current_data else "downloaded"
+        )
+        downloaded = status != "not_downloaded"
+        in_cache = status == "downloaded"
 
-        self._delete_model_btn.setEnabled(not is_active_model and downloaded)
+        # Delete only makes sense for a model physically present in the user
+        # cache. A bundled (offline-installer) model lives in read-only install
+        # resources and is removed with the app, not from the UI.
+        self._delete_model_btn.setEnabled(not is_active_model and in_cache)
         if is_active_model:
             self._delete_model_btn.setToolTip("Cannot delete currently active model")
+        elif status == "bundled":
+            self._delete_model_btn.setToolTip(
+                "Bundled with the offline installer; cannot be deleted here"
+            )
         else:
             self._delete_model_btn.setToolTip("Delete selected model from cache")
 
+        # Nothing to download when already downloaded OR bundled.
         self._download_btn.setEnabled(not downloaded)
 
     def _on_model_combo_changed(self, index: int) -> None:
@@ -667,7 +780,11 @@ class ConfigurationTab(QWidget):
 
     def _on_mode_radio_toggled(self, checked: bool) -> None:
         """Mirror a product speech mode into the concrete ASR model selection."""
-        if not checked or self._syncing_model_selection or not hasattr(self, "_model_combo"):
+        if (
+            not checked
+            or self._syncing_model_selection
+            or not hasattr(self, "_model_combo")
+        ):
             return
 
         sender = self.sender()
@@ -818,10 +935,15 @@ class ConfigurationTab(QWidget):
             self._settings.structured_formatting_enabled
         )
 
+        # v0.2.0 assistant conversation retention (reflects the persisted value;
+        # independent of transcript history_enabled).
+        if hasattr(self, "_conversation_history_cb"):
+            self._conversation_history_cb.setChecked(
+                getattr(self._settings, "conversation_history_enabled", False)
+            )
+
         # Phase 8A context controls.
-        self._context_detection_cb.setChecked(
-            self._settings.context_detection_enabled
-        )
+        self._context_detection_cb.setChecked(self._settings.context_detection_enabled)
         override_token = self._settings.context_override or AUTO
         idx = self._context_override_combo.findData(override_token)
         if idx < 0:
@@ -849,9 +971,11 @@ class ConfigurationTab(QWidget):
         # Advanced / Performance: Whisper Small CPU threads (bounded {4,6,8}).
         if hasattr(self, "_whisper_threads_radios"):
             from ...core.settings.settings import DEFAULT_WHISPER_CPU_THREADS
+
             val = self._settings.whisper_small_cpu_threads
-            rb = self._whisper_threads_radios.get(val) or \
-                self._whisper_threads_radios.get(DEFAULT_WHISPER_CPU_THREADS)
+            rb = self._whisper_threads_radios.get(
+                val
+            ) or self._whisper_threads_radios.get(DEFAULT_WHISPER_CPU_THREADS)
             if rb is not None:
                 rb.setChecked(True)
 
@@ -893,6 +1017,13 @@ class ConfigurationTab(QWidget):
             self._structured_formatting_cb.isChecked()
         )
 
+        # v0.2.0 assistant conversation retention. Written independently of the
+        # transcript history_enabled setting; neither one toggles the other.
+        if hasattr(self, "_conversation_history_cb"):
+            self._settings.conversation_history_enabled = (
+                self._conversation_history_cb.isChecked()
+            )
+
         # Phase 8A context controls.
         self._settings.context_detection_enabled = (
             self._context_detection_cb.isChecked()
@@ -910,7 +1041,8 @@ class ConfigurationTab(QWidget):
 
         # Domain-coverage selector -> explicit enabled domains.
         self._settings.enabled_domains = [
-            name for name, cb in getattr(self, "_domain_checks", {}).items()
+            name
+            for name, cb in getattr(self, "_domain_checks", {}).items()
             if cb.isChecked()
         ]
 
@@ -929,6 +1061,15 @@ class ConfigurationTab(QWidget):
         # Speech Mode radios only mirror/select that combo.
         if model_name:
             self._settings.model_id = model_name
+            # Keep the dictation language consistent with the chosen model so
+            # the two never desync (e.g. selecting the Hindi IndicConformer
+            # model sets dictation_language='hi'). This prevents live speech
+            # from being transcribed by the wrong-language recognizer.
+            from ...core.asr.language_routing import get_model_language
+
+            model_lang = get_model_language(model_name)
+            if model_lang:
+                self._settings.dictation_language = model_lang
 
         # Advanced / Performance: persist the selected Whisper Small thread
         # count (Whisper-only; does not affect Parakeet). Validator/loader

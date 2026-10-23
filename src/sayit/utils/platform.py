@@ -23,6 +23,13 @@ def get_executable_path() -> str:
             logger.debug(f"Running as frozen Windows exe: {sys.executable}")
             return sys.executable
 
+    if system == "darwin":
+        # Inside a Briefcase .app the launcher is the app executable in
+        # Contents/MacOS; sys.executable points at it. Use it directly.
+        if ".app/Contents/" in sys.executable:
+            logger.debug(f"Running inside macOS .app: {sys.executable}")
+            return sys.executable
+
     logger.debug(f"Running in development mode: {sys.executable}")
     return sys.executable
 
@@ -35,6 +42,10 @@ def is_packaged() -> bool:
         return bool(os.environ.get("APPIMAGE"))
     elif system == "windows":
         return getattr(sys, "frozen", False)
+    elif system == "darwin":
+        # A Briefcase macOS .app runs the app's own bundled Python; the
+        # executable lives inside "<App>.app/Contents/...". Detect the bundle.
+        return ".app/Contents/" in sys.executable
 
     return False
 
@@ -49,8 +60,53 @@ def set_autostart(enabled: bool, app_name: str = "SayIt") -> bool:
 
     if system == "windows":
         return _set_autostart_windows(enabled, app_name)
+    elif system == "darwin":
+        return _set_autostart_macos(enabled, app_name)
     else:
         return _set_autostart_linux(enabled, app_name)
+
+
+def _set_autostart_macos(enabled: bool, app_name: str) -> bool:
+    """Enable/disable login autostart on macOS via a per-user LaunchAgent.
+
+    Writes ~/Library/LaunchAgents/com.sayit.<app>.plist. Uses the resolved
+    executable path (the .app launcher when packaged, else the dev interpreter
+    with -m sayit). Non-destructive: disabling removes the plist if present.
+    """
+    import plistlib
+
+    agents_dir = Path.home() / "Library" / "LaunchAgents"
+    label = f"com.sayit.{app_name.lower()}"
+    plist_path = agents_dir / f"{label}.plist"
+
+    if enabled:
+        exe_path = get_executable_path()
+        if is_packaged():
+            program_args = [exe_path]
+        else:
+            program_args = [exe_path, "-m", "sayit"]
+        payload = {
+            "Label": label,
+            "ProgramArguments": program_args,
+            "RunAtLoad": True,
+            "ProcessType": "Interactive",
+        }
+        try:
+            agents_dir.mkdir(parents=True, exist_ok=True)
+            with open(plist_path, "wb") as f:
+                plistlib.dump(payload, f)
+            logger.info(f"macOS autostart enabled: {plist_path}")
+        except OSError as e:
+            logger.error(f"Failed to write LaunchAgent: {e}")
+            return False
+    else:
+        try:
+            plist_path.unlink(missing_ok=True)
+            logger.info("macOS autostart disabled")
+        except OSError as e:
+            logger.error(f"Failed to remove LaunchAgent: {e}")
+            return False
+    return True
 
 
 def _set_autostart_windows(enabled: bool, app_name: str) -> bool:

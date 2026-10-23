@@ -68,7 +68,7 @@ run **later**; items marked pending reflect what has not yet been validated.
 ## Platform
 - [ ] Windows: interactive validation on a physical display; packaged install.
 - [ ] Linux: validate (or explicitly scope out) X11 vs Wayland hotkey behavior and `xclip` clipboard dependency.
-- [ ] macOS: confirmed unsupported and documented as such.
+- [ ] macOS: now a supported build target (arm64 + x86_64 .app/DMG build in CI). Hands-on native acceptance pending — see "Platform acceptance checklist (v0.2.0)" below.
 
 ## Packaging
 - [ ] Installer builds (`scripts/build.py` + Inno Setup) succeed in CI.
@@ -95,3 +95,185 @@ run **later**; items marked pending reflect what has not yet been validated.
 - [ ] README matches shipped behavior.
 - [ ] CHANGELOG updated for the release.
 - [ ] Real screenshots/demo captured from the actual UI (not fabricated).
+
+---
+
+## CI release configuration — secrets, permissions, and macOS signing (v0.2.0+)
+
+This section documents what the GitHub Actions release pipeline
+(`.github/workflows/build.yml`) requires. It is reference documentation for the
+maintainer configuring the repository; **no secret values are shown here, and
+none must ever be committed, printed, or logged.**
+
+### Required GitHub Actions secrets (macOS signing + notarization)
+
+Configure these under **Repository → Settings → Secrets and variables →
+Actions → Repository secrets**. They are consumed only by the `build-macos`
+job. The workflow reads each via `${{ secrets.<NAME> }}`; it never echoes a
+value (the notary key is written to a `mktemp` file with `umask 077` and
+removed on exit).
+
+| Secret | Purpose | How it is used |
+|--------|---------|----------------|
+| `MACOS_CERTIFICATE_P12_BASE64` | **Base64-encoded** `.p12`/`.pfx` export of the **Developer ID Application** certificate **and its private key**. This is what actually lets a fresh runner sign — an identity name alone is not enough. | Decoded to a `mktemp` `.p12` (perms 600), imported into a **temporary** keychain by the `Import Developer ID certificate` step, then the keychain + file are deleted (even on failure). |
+| `MACOS_CERTIFICATE_PASSWORD` | The password protecting the `.p12` export above. | Passed to `security import -P`; never echoed. |
+| `MACOS_SIGN_IDENTITY` | The *Developer ID Application* identity **name** (certificate common name, e.g. `Developer ID Application: Your Name (TEAMID)`) matching the imported certificate. | `security find-identity -v -p codesigning` must find it in the temp keychain (the import step fails loudly otherwise); then passed to the build as `SAYIT_MACOS_SIGN_IDENTITY` only when a cert was imported (`can_sign`), and `scripts/build.py` forwards it to `briefcase package macOS app --identity <id>`. Without a certificate the build ad-hoc signs and is reported `unsigned-dev`. |
+| `MACOS_NOTARY_API_KEY` | The **contents** of the App Store Connect API key file `AuthKey_<KEYID>.p8` (the full PEM text, not a path). Must be a **Team** key with the Developer role, usable by `notarytool`. | Written to a temporary `.p8` file (restrictive perms, deleted on exit) and passed to `xcrun notarytool submit --key`. |
+| `MACOS_NOTARY_API_KEY_ID` | The App Store Connect API **Key ID** (the `<KEYID>` portion of the key filename). | Passed to `xcrun notarytool submit --key-id`. |
+| `MACOS_NOTARY_API_ISSUER` | The App Store Connect API **Issuer ID** (a UUID from the API Keys page). | Passed to `xcrun notarytool submit --issuer`. |
+
+Notes:
+- **Signing requires BOTH** `MACOS_CERTIFICATE_P12_BASE64` + `MACOS_CERTIFICATE_PASSWORD`
+  (the importable certificate) **and** `MACOS_SIGN_IDENTITY` (its name). A
+  configured identity name without the certificate does **not** enable signing;
+  the build stays `unsigned-dev`.
+- The three notary secrets are required **together**; the workflow treats
+  notary credentials as present only when `MACOS_NOTARY_API_KEY`,
+  `MACOS_NOTARY_API_KEY_ID`, and `MACOS_NOTARY_API_ISSUER` are all non-empty.
+  Notarization is only attempted on a **real signed** build, never ad-hoc.
+- These secrets are needed for any **signed** macOS build. A **tagged `v*`
+  release fails fast** (before the long build) if the full certificate +
+  identity + notary set is incomplete. Branch/PR/manual builds may run without
+  them and produce clearly-labelled `unsigned-dev` development DMGs that the
+  release job refuses to publish.
+- The published `SIGNING_STATUS-<arch>.txt` marker is **outcome-based**: it
+  reads `signed-notarized` only after signing, notarization, stapling, and
+  Gatekeeper assessment all actually succeeded (computed by
+  `scripts/macos_signing.py`, unit-tested in `tests/test_macos_signing.py`).
+
+### Required GitHub Actions permission (release job)
+
+- The `release` job declares `permissions: { contents: write }`. This scopes
+  write access to the single job that creates the GitHub Release and uploads
+  assets (`softprops/action-gh-release`); the build/test jobs run with default
+  read-only token permissions. Do not widen this scope. If the repository or
+  org default workflow permissions are set to read-only, this per-job
+  `contents: write` grant is what allows the release to be published.
+
+### Configuring and validating the Apple credentials (without exposing values)
+
+1. **Export the Developer ID Application certificate + private key** from
+   Keychain Access (or create it in the Apple Developer portal first). Select
+   **both** the certificate and its private key → right-click → **Export** →
+   format **Personal Information Exchange (.p12)** → set a strong password.
+   This password becomes `MACOS_CERTIFICATE_PASSWORD`.
+   - Note the identity string shown by:
+     ```bash
+     security find-identity -v -p codesigning
+     # e.g. "Developer ID Application: Your Name (TEAMID)"
+     ```
+     That exact string becomes `MACOS_SIGN_IDENTITY`.
+2. **Base64-encode the `.p12`** for safe storage as a secret (no newlines
+   leaking into the value):
+   ```bash
+   base64 -i DeveloperID.p12 | pbcopy   # copies the base64 to the clipboard
+   ```
+   Paste that into `MACOS_CERTIFICATE_P12_BASE64`. Do not commit the `.p12` or
+   its base64; delete the local files afterwards.
+3. In **App Store Connect → Users and Access → Integrations → App Store Connect
+   API**, create a **Team** API key with the **Developer** role (an individual
+   key cannot use `notarytool`). Download `AuthKey_<KEYID>.p8` **once** (it
+   cannot be re-downloaded). Record the **Key ID** and the page's **Issuer ID**.
+4. Add the **six** repository secrets (names in the table above). For
+   `MACOS_NOTARY_API_KEY`, paste the entire contents of the `.p8` file.
+5. Validate **without printing values**:
+   - In the Actions UI, the `Determine release/signing context` step prints
+     only booleans (`can_sign`, `should_notarize`, `have_cert`, `have_notary`,
+     `is_tag`) — never secret values.
+   - The `Import Developer ID certificate (temporary keychain)` step runs
+     `security find-identity -v -p codesigning` and **fails loudly** if
+     `MACOS_SIGN_IDENTITY` is not found among the imported identities (a wrong
+     name, a cert without its private key, or a bad password all fail here).
+   - A **tagged** build with any required secret missing **fails fast** at the
+     context step, before the long build — intended guard, not a bug.
+   - Keep the local `.p8`/`.p12` out of the repository (covered by the
+     keys/secrets ignore rules). Rotate any key/cert if ever exposed.
+
+To verify the produced artifacts yourself (see also
+`docs/RELEASE_GATE_v0.2.0.md`): `codesign --verify --deep --strict` +
+`codesign -dvvv` (expect `flags=...runtime`, not `Signature=adhoc`),
+`xcrun stapler validate <dmg>`, and
+`spctl --assess --type open --context context:primary-signature -vv <dmg>`.
+
+### macOS release gate — sign → notarize → staple → Gatekeeper
+
+A public macOS release (tagged `v*`) **must pass all four** of the following,
+enforced by the `build-macos` and `release` jobs:
+
+1. **Signing** — the `.app`/DMG is signed with the Developer ID identity
+   (`MACOS_SIGN_IDENTITY`). An unsigned DMG is a development artifact only.
+2. **Notarization** — `xcrun notarytool submit --wait` uploads each DMG and
+   waits for Apple's verdict; a rejection fails the job.
+3. **Stapling** — `xcrun stapler staple` attaches the notarization ticket so
+   validation works offline; `xcrun stapler validate` must pass.
+4. **Gatekeeper assessment** — `spctl --assess --type open
+   --context context:primary-signature -vv` must accept the DMG.
+
+The `release` job additionally refuses to publish if any DMG is present but a
+`SIGNING_STATUS-*.txt` marker reads `unsigned-dev`, or if a DMG is present with
+no marker at all. A Windows/Linux-only release (no DMG) is allowed and skips
+this macOS guard.
+
+### Native CI build/package status (v0.2.0)
+
+The native macOS (`macos-14` arm64 + `macos-15-intel` x86_64) and Linux
+(`ubuntu-latest` AppImage) build/package jobs have **passed** on GitHub-hosted
+runners for commit `33a323c`, run
+[39946798291](https://github.com/VptrCipher/SayIt/actions/runs/39946798291)
+(all five jobs green). `macos-13` was retired by GitHub on 2025-12-04 and
+replaced with `macos-15-intel` (actions/runner-images#13045).
+
+- [x] `build-macos` (arm64) — build, native-arch check, both DMG variants
+      (dynamic payload-sized `hdiutil` image), bundled-model integrity gate,
+      DMG mount + payload verification, upload — **passed on macos-14**.
+- [x] `build-macos` (x86_64) — same — **passed on macos-15-intel**.
+- [x] `build-linux-x64` — AppImage build, smoke test, size/ELF/name validation,
+      checksum, upload — **passed on ubuntu-latest**.
+
+These are the **automated** build/package/verify jobs. Signing/notarization was
+**skipped** (no Apple credentials on a PR build; DMGs are `unsigned-dev`
+development artifacts). Hands-on native desktop acceptance (permissions,
+hotkeys, live transcription, insertion, notifications) is tracked separately in
+"Platform acceptance checklist (v0.2.0)" below and is **not** yet done. Do not
+describe macOS as release-validated until signing + notarization + hands-on
+acceptance are complete.
+
+---
+
+## Platform acceptance checklist (v0.2.0)
+
+Hands-on validation to run on real hardware with an installed build before a
+public release. **None of these have been performed yet; do not mark them
+without running on physical machines.** CI covers only automated build/package.
+
+### macOS (per architecture: arm64 + Intel)
+- [ ] Microphone permission: first capture prompts for the mic permission;
+      denial surfaces actionable guidance and the app never claims to be
+      listening while denied.
+- [ ] Accessibility / Input Monitoring permission: global hotkey + synthetic
+      paste require it; missing permission shows actionable guidance.
+- [ ] Global hotkey records on hold and transcribes on release; Esc cancels an
+      in-progress recording/transcription.
+- [ ] Live transcription produces usable text from a real mic with a real model.
+- [ ] Clipboard insertion (Cmd+V) inserts at the cursor in representative apps
+      (document which apps were tested).
+- [ ] Notification Center: reminder/completion notifications appear and behave
+      correctly (no stuck Recording/Processing state after errors).
+- [ ] Offline bundle: with no network, the bundled INT8 models load and
+      transcribe (no download required); the four expected models are present
+      in the installed `.app`.
+- [ ] Gatekeeper first-launch behavior matches the signing status of the build
+      being tested (unsigned dev build vs a notarized release build).
+
+### Linux (X11 and Wayland)
+- [ ] X11: global hotkey (pynput) records/transcribes; `xclip`/`xsel` clipboard
+      insertion works at the cursor.
+- [ ] Wayland: GlobalShortcuts portal hotkey works where supported;
+      `wl-clipboard` insertion works; where the compositor lacks
+      portal/synthetic-input, the transcript is left on the clipboard with a
+      clear "paste it yourself" message (no silent failure).
+- [ ] Notifications appear via the desktop notification service.
+- [ ] Offline bundle: bundled INT8 models load and transcribe with no network;
+      the four expected models are present in the AppImage.
+- [ ] Esc cancels an active recording/transcription; app never stuck after
+      errors.
