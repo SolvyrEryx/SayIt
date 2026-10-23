@@ -2,31 +2,89 @@
     {
         "id": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-fp16",
         "name": "Parakeet TDT v2 0.6B (FP16)",
-        "type": "transducer"
+        "type": "transducer",
+        "language": "en",
+        "source": "nvidia/parakeet-tdt-0.6b-v2 (via sherpa-onnx asr-models)",
+        "license": "CC-BY-4.0"
     },
     {
         "id": "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
         "name": "Parakeet TDT v2 0.6B (Int8)",
-        "type": "transducer"
+        "type": "transducer",
+        "language": "en",
+        "source": "nvidia/parakeet-tdt-0.6b-v2 (via sherpa-onnx asr-models)",
+        "license": "CC-BY-4.0"
     },
     {
         "id": "sherpa-onnx-whisper-distil-large-v3.5",
         "name": "Whisper Distil Large v3.5",
-        "type": "whisper"
+        "type": "whisper",
+        "language": "en",
+        "source": "openai/whisper (distil, via sherpa-onnx asr-models)",
+        "license": "MIT"
     },
     {
         "id": "sherpa-onnx-whisper-small",
         "name": "Whisper Small",
-        "type": "whisper"
+        "type": "whisper",
+        "language": "en",
+        "source": "openai/whisper-small (via sherpa-onnx asr-models)",
+        "license": "MIT"
     },
     {
         "id": "sherpa-onnx-whisper-tiny",
         "name": "Whisper Tiny",
-        "type": "whisper"
+        "type": "whisper",
+        "language": "en",
+        "source": "openai/whisper-tiny (via sherpa-onnx asr-models)",
+        "license": "MIT"
     },
     {
         "id": "sherpa-onnx-whisper-large-v3",
         "name": "Whisper Large v3",
-        "type": "whisper"
+        "type": "whisper",
+        "language": "en",
+        "source": "openai/whisper-large-v3 (via sherpa-onnx asr-models)",
+        "license": "MIT"
+    },
+    {
+        "id": "indicconformer-hi-int8",
+        "name": "IndicConformer Hindi (Int8)",
+        "type": "nemo_ctc",
+        "language": "hi",
+        "source": "ai4bharat/IndicConformer via parismitaglobalsolutions/indicconformer-sherpa-onnx @ 9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+        "license": "MIT (AI4Bharat IndicConformer)",
+        "files": [
+            {
+                "url": "https://huggingface.co/parismitaglobalsolutions/indicconformer-sherpa-onnx/resolve/9721eb71eea141fae0982cfcdb9dd2e3d4953c4a/hi/model.int8.onnx",
+                "dest": "model.int8.onnx",
+                "sha256": "915c71e04dd7e5378a4057fdebb252b3a587188e4e99db6d7ce0909ad5ad05fa"
+            },
+            {
+                "url": "https://huggingface.co/parismitaglobalsolutions/indicconformer-sherpa-onnx/resolve/9721eb71eea141fae0982cfcdb9dd2e3d4953c4a/tokens.txt",
+                "dest": "tokens.txt",
+                "sha256": "ee60967630213f31951817ac8b402b92ec18cce80718a24a49b388e56672dfb2"
+            }
+        ]
+    },
+    {
+        "id": "indicconformer-kn-int8",
+        "name": "IndicConformer Kannada (Int8)",
+        "type": "nemo_ctc",
+        "language": "kn",
+        "source": "ai4bharat/IndicConformer via parismitaglobalsolutions/indicconformer-sherpa-onnx @ 9721eb71eea141fae0982cfcdb9dd2e3d4953c4a",
+        "license": "MIT (AI4Bharat IndicConformer)",
+        "files": [
+            {
+                "url": "https://huggingface.co/parismitaglobalsolutions/indicconformer-sherpa-onnx/resolve/9721eb71eea141fae0982cfcdb9dd2e3d4953c4a/kn/model.int8.onnx",
+                "dest": "model.int8.onnx",
+                "sha256": "b226ce7e4ea35b0dd66991964bd00e011b6b14b0fcdf4f7d1cccd777781c94dc"
+            },
+            {
+                "url": "https://huggingface.co/parismitaglobalsolutions/indicconformer-sherpa-onnx/resolve/9721eb71eea141fae0982cfcdb9dd2e3d4953c4a/tokens.txt",
+                "dest": "tokens.txt",
+                "sha256": "ee60967630213f31951817ac8b402b92ec18cce80718a24a49b388e56672dfb2"
+            }
+        ]
     }
 ]

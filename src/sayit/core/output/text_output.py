@@ -67,25 +67,41 @@ class TextOutputController:
         # Delay pynput until output is actually requested. This lets the Linux
         # desktop UI launch on systems where X/Wayland input hooks are unavailable.
         self._keyboard = None
+        # OS-aware paste modifier + capabilities, resolved once. Cmd on macOS,
+        # Ctrl elsewhere; Wayland may forbid synthetic paste entirely.
+        from ...utils import capabilities as caps
+
+        self._caps = caps
+        self._paste_modifier = caps.paste_modifier()
 
     def output_text(self, text: str) -> InsertionResult:
-        """Insert ``text`` at the active cursor via clipboard + Ctrl+V.
+        """Insert ``text`` at the active cursor via clipboard + paste keystroke.
 
         Returns an :class:`InsertionResult`. The method never raises for the
         common clipboard/keyboard failure modes: on failure it returns a result
         with the transcript intact so the caller can keep it recoverable.
 
+        Platform behaviour:
+        - The paste keystroke uses Cmd+V on macOS and Ctrl+V elsewhere.
+        - On Linux without a clipboard tool (xclip/xsel/wl-clipboard), the copy
+          itself fails; we report that with an actionable install hint.
+        - On Wayland, synthetic keystrokes are restricted: we copy the
+          transcript and DO NOT issue a paste, returning a result whose
+          ``paste_issued`` is False so the caller informs the user to paste
+          manually (automatic insertion is never falsely claimed).
+
         Clipboard-restore note: we deliberately do NOT save and restore the
-        user's previous clipboard contents here. Because paste completion cannot
-        be confirmed, restoring after a fixed delay risks either overwriting the
-        clipboard before the target app has pasted (so the OLD content pastes
-        instead) or clobbering something the user copied in the meantime. The
-        safer behavior for now is to leave the transcript on the clipboard so it
-        can always be pasted manually if automatic insertion did not land. A
-        confirmed-paste or focus-aware restore can be revisited later with
-        interactive testing in real target applications.
+        user's previous clipboard contents here (paste completion cannot be
+        confirmed, so a timed restore risks clobbering). The transcript is left
+        on the clipboard so it can always be pasted manually.
         """
         logger.debug(f"Inserting text via clipboard ({len(text)} chars)")
+
+        # Step 0: ensure a clipboard backend exists (Linux may lack one).
+        clip = self._caps.clipboard_capability()
+        if not clip.available:
+            logger.error(f"No clipboard backend available: {clip.reason}")
+            return InsertionResult(copied=False, paste_issued=False, text=text)
 
         # Step 1: copy to clipboard (verifiable).
         try:
@@ -95,16 +111,23 @@ class TextOutputController:
             # Transcript is NOT on the clipboard; caller must surface/record it.
             return InsertionResult(copied=False, paste_issued=False, text=text)
 
+        # Step 1b: if the OS/session forbids synthetic insertion (Wayland),
+        # stop here with the transcript on the clipboard — never claim a paste.
+        ins = self._caps.insertion_capability()
+        if not ins.auto_insert:
+            logger.info(f"Automatic insertion unavailable: {ins.reason}")
+            return InsertionResult(copied=True, paste_issued=False, text=text)
+
         # Step 2: issue the paste keystroke (NOT verifiable).
         try:
             # Small pre-paste settle so the target reliably sees the new
-            # clipboard contents before Ctrl+V. No post-paste hold: it only
-            # delayed the return and nothing depends on it.
+            # clipboard contents before the paste keystroke.
             if self.PRE_PASTE_SETTLE_S > 0:
                 time.sleep(self.PRE_PASTE_SETTLE_S)
             if self._keyboard is None:
                 self._keyboard = KeyboardController()
-            with self._keyboard.pressed(Key.ctrl):
+            modifier = Key.cmd if self._paste_modifier == "cmd" else Key.ctrl
+            with self._keyboard.pressed(modifier):
                 self._keyboard.tap("v")
         except Exception as e:
             # Paste keystroke failed, but the transcript is still on the

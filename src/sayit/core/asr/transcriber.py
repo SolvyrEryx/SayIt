@@ -10,7 +10,11 @@ from ...utils.logger import get_logger
 from ..audio.audio_processor import AudioProcessor, needs_chunking
 from .backends import SherpaOnnxBackend, TranscriptionResult
 from .models.downloader import ModelDownloader
-from .models.registry import get_model_by_id, is_model_downloaded
+from .models.registry import (
+    get_model_by_id,
+    is_model_downloaded,
+    resolve_model_location,
+)
 
 
 class EngineState(Enum):
@@ -129,8 +133,17 @@ class TranscriptionEngine:
             f"Loading {self.backend_name} model: {self.model_name}...",
         )
         self._backend = SherpaOnnxBackend()
+        # Resolve registry IDs to a concrete directory. A bundled offline model
+        # lives in read-only install resources (outside the user cache); load it
+        # in place rather than expecting a downloaded copy. Absolute paths and
+        # already-cached models are passed through unchanged.
+        load_target = self.model_name
+        if not os.path.isabs(self.model_name):
+            resolved = resolve_model_location(self.model_name)
+            if resolved is not None:
+                load_target = resolved
         self._backend.load(
-            model_path=self.model_name,
+            model_path=load_target,
             on_progress=self.on_download_progress,
             whisper_num_threads=self._whisper_num_threads,
         )

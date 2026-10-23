@@ -18,8 +18,16 @@ class TestModelRegistry:
         for model in AVAILABLE_MODELS:
             assert model.id
             assert model.name
-            assert model.url.startswith("https://")
-            assert model.url.endswith(".tar.bz2")
+            if model.is_multi_file:
+                # Multi-file models (IndicConformer) declare explicit file URLs.
+                assert model.files
+                for f in model.files:
+                    assert f.url.startswith("https://")
+                    assert f.dest
+            else:
+                # Archive models use the derived tar.bz2 release URL.
+                assert model.url.startswith("https://")
+                assert model.url.endswith(".tar.bz2")
 
     def test_get_model_by_id_found(self):
         model = AVAILABLE_MODELS[0]

@@ -37,11 +37,16 @@ from ..knowledge.personalization import personalized_terms
 # If neither exists, the pipeline is a no-op (fail-safe), so production never
 # breaks on a missing index.
 _PACKAGED_INDEX = (
-    Path(__file__).resolve().parent.parent / "knowledge" / "data" / "knowledge_index.json"
+    Path(__file__).resolve().parent.parent
+    / "knowledge"
+    / "data"
+    / "knowledge_index.json"
 )
 _ARTIFACTS_INDEX = (
     Path(__file__).resolve().parents[4]
-    / "artifacts" / "phase9e" / "knowledge_index_entity.json"
+    / "artifacts"
+    / "phase9e"
+    / "knowledge_index_entity.json"
 )
 
 
@@ -49,6 +54,7 @@ def _default_index_path() -> Path:
     if _PACKAGED_INDEX.exists():
         return _PACKAGED_INDEX
     return _ARTIFACTS_INDEX
+
 
 # Evidence-supported operating point revalidated in 9I (0.90–0.92 equivalent).
 DEFAULT_THRESHOLD = 0.90
@@ -62,12 +68,15 @@ class PipelineResult:
 
 
 class IntelligencePipeline:
-    def __init__(self, index_path: Optional[Path] = None,
-                 threshold: float = DEFAULT_THRESHOLD,
-                 user_vocabulary: Optional[List[dict]] = None,
-                 enabled_domains: Optional[List[str]] = None,
-                 disabled_domains: Optional[List[str]] = None,
-                 domain_aware: bool = False):
+    def __init__(
+        self,
+        index_path: Optional[Path] = None,
+        threshold: float = DEFAULT_THRESHOLD,
+        user_vocabulary: Optional[List[dict]] = None,
+        enabled_domains: Optional[List[str]] = None,
+        disabled_domains: Optional[List[str]] = None,
+        domain_aware: bool = False,
+    ):
         self._index_path = Path(index_path) if index_path else _default_index_path()
         self._threshold = threshold
         self._user_vocab = user_vocabulary
@@ -89,13 +98,16 @@ class IntelligencePipeline:
                 return False
             index = KnowledgeIndex.load(self._index_path)
             user_terms: List[KnowledgeTerm] = (
-                personalized_terms(self._user_vocab) if self._user_vocab else [])
+                personalized_terms(self._user_vocab) if self._user_vocab else []
+            )
             activation = None
             domain_terms: List[KnowledgeTerm] = []
             if self._domain_aware:
                 from ..knowledge.domain_activation import DomainActivation, active_terms
+
                 activation = DomainActivation.from_settings(
-                    self._enabled_domains, self._disabled_domains)
+                    self._enabled_domains, self._disabled_domains
+                )
                 # Build the active-domain term set (core + active domain/science
                 # packs). These are made searchable alongside the packaged index
                 # so domain coverage actually reaches retrieval. Context is left
@@ -105,13 +117,20 @@ class IntelligencePipeline:
                     domain_terms = active_terms(activation, None)
                 except Exception:
                     domain_terms = []
-            retriever = CandidateRetriever(index, user_terms=user_terms,
-                                           domain_terms=domain_terms,
-                                           activation=activation)
-            ranker = CandidateRanker(RankerConfig(
-                accept_threshold=self._threshold, use_domain=self._domain_aware))
+            retriever = CandidateRetriever(
+                index,
+                user_terms=user_terms,
+                domain_terms=domain_terms,
+                activation=activation,
+            )
+            ranker = CandidateRanker(
+                RankerConfig(
+                    accept_threshold=self._threshold, use_domain=self._domain_aware
+                )
+            )
             self._adapter = RankedRetrievalAdapter(
-                retriever, ranker, CorrectorConfig(), top_k=10)
+                retriever, ranker, CorrectorConfig(), top_k=10
+            )
             return True
         except Exception as e:  # fail-safe
             self._load_error = f"load_error:{type(e).__name__}"
@@ -127,9 +146,24 @@ class IntelligencePipeline:
         unchanged on any error or when the index is unavailable."""
         if not raw_text or not raw_text.strip():
             return PipelineResult(text=raw_text or "", changed=False, reason="empty")
+        # Script-safe abstention: this knowledge stack is English/Latin-oriented.
+        # Never run it on predominantly non-Latin (Hindi/Kannada/Indic) text, so
+        # native-script transcripts are returned exactly as decoded.
+        from ..transcript_processor.script_utils import is_predominantly_non_latin
+
+        if is_predominantly_non_latin(raw_text):
+            self.last_diagnostics = {"applied": False, "reason": "non_latin_script"}
+            return PipelineResult(
+                text=raw_text, changed=False, reason="non_latin_script"
+            )
         if not self._ensure_loaded() or self._adapter is None:
-            self.last_diagnostics = {"applied": False, "reason": self._load_error or "unavailable"}
-            return PipelineResult(text=raw_text, changed=False, reason=self._load_error or "unavailable")
+            self.last_diagnostics = {
+                "applied": False,
+                "reason": self._load_error or "unavailable",
+            }
+            return PipelineResult(
+                text=raw_text, changed=False, reason=self._load_error or "unavailable"
+            )
         try:
             result = self._adapter.correct(raw_text, context)
             decisions = self._adapter.last_decisions
@@ -139,10 +173,20 @@ class IntelligencePipeline:
                 "applied": True,
                 "changed": result.changed,
                 "num_decisions": len(decisions),
-                "num_corrections": sum(1 for d in decisions if d.get("decision") == "correct"),
+                "num_corrections": sum(
+                    1 for d in decisions if d.get("decision") == "correct"
+                ),
             }
-            return PipelineResult(text=result.text, changed=result.changed,
-                                  reason="corrected" if result.changed else "unchanged")
+            return PipelineResult(
+                text=result.text,
+                changed=result.changed,
+                reason="corrected" if result.changed else "unchanged",
+            )
         except Exception as e:  # fail-safe
-            self.last_diagnostics = {"applied": False, "reason": f"error:{type(e).__name__}"}
-            return PipelineResult(text=raw_text, changed=False, reason=f"error:{type(e).__name__}")
+            self.last_diagnostics = {
+                "applied": False,
+                "reason": f"error:{type(e).__name__}",
+            }
+            return PipelineResult(
+                text=raw_text, changed=False, reason=f"error:{type(e).__name__}"
+            )

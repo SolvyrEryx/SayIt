@@ -1,6 +1,6 @@
 [project]
 name = "sayit"
-version = "0.1.2"
+version = "0.2.0"
 description = "Local-first push-to-talk voice typing for your desktop"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -9,14 +9,18 @@ dependencies = [
     "platformdirs>=4.5.1",
     "pydantic>=2.12.5",
     "pynput>=1.8.1",
-    "PySide6-Essentials>=6.6.0",
+    "PySide6-Essentials>=6.6.0,<6.11",
     "sounddevice>=0.5.3",
-    "numpy>=1.26.0",
-
-    "litellm>=1.80.16",
+    "numpy>=1.26.0,<2",
+    "litellm>=1.80.16,<2",
     "pyperclip>=1.9.0",
     "sherpa-onnx==1.13.8",
     "sherpa-onnx-core==1.13.8",
+    # Enterprise bundle authenticity (Ed25519 asymmetric signatures). Audited
+    # implementation; required for policy-bundle verification. Enterprise is
+    # off by default, so personal-user installs are unaffected at runtime.
+    "cryptography>=43,<46",
+    "winsdk>=1.0.0b10 ; sys_platform == 'win32'",
 ]
 
 
@@ -42,7 +46,15 @@ sayit = ["_vendor/linux/libportaudio.so*"]
 [dependency-groups]
 dev = [
     "black>=25.12.0",
-    "briefcase>=0.3.26",
+    # Briefcase is pinned per-platform:
+    # - Windows needs >=0.4.6 (0.3.26's single-clause Specifier mis-parses the
+    #   project's requires-python; 0.4.x uses SpecifierSet and parses it).
+    # - Linux keeps 0.3.26: Briefcase 0.4.x has an AppImage-backend regression
+    #   (`'OrderedDict' object has no attribute 'host_arch'`) that breaks
+    #   briefcase.toml creation. 0.3.26 builds the AppImage correctly and
+    #   accepts the current single-clause requires-python (">=3.12").
+    "briefcase>=0.4.6; sys_platform == 'win32'",
+    "briefcase==0.3.26; sys_platform != 'win32'",
     "isort>=7.0.0",
     "pre-commit>=4.5.1",
     "pyside6>=6.10.1",
@@ -65,29 +77,83 @@ markers = [
 [tool.briefcase]
 project_name = "SayIt"
 bundle = "com.sayit"
-version = "0.1.2"
+version = "0.2.0"
 author = "SayIt"
 license.file = "LICENSE"
 
 [tool.briefcase.app.sayit]
 formal_name = "SayIt"
 icon = "icons/sayit"
-description = "SayIt — local push-to-talk voice typing for Windows"
+description = "SayIt â€” local push-to-talk voice typing for Windows"
 long_description = "SayIt is a lightweight push-to-talk voice-typing utility. Hold a hotkey, speak, release, and the locally-transcribed text is inserted at your cursor. Speech recognition runs on-device via Sherpa-ONNX."
 sources = ["src/sayit"]
 requires = [
     "platformdirs>=4.5.1",
     "pydantic>=2.12.5",
     "pynput>=1.8.1",
-    "PySide6-Essentials>=6.6.0",
+    "PySide6-Essentials>=6.6.0,<6.11",
     "sounddevice>=0.5.3",
-    "numpy>=1.26.0",
-    # Keep the native ASR runtime pair pinned and validated together.
+    # Pin NumPy to the tested 1.x line. NumPy 2.x is a breaking major that was
+    # NOT part of the validated environment; letting Briefcase resolve 2.x
+    # would ship an untested runtime.
+    "numpy>=1.26.0,<2",
+    # Keep the native ASR core validated with sherpa-onnx 1.13.8 (pinned pair).
     "sherpa-onnx==1.13.8",
     "sherpa-onnx-core==1.13.8",
-    "litellm>=1.80.16",
+    "litellm>=1.80.16,<2",
     "pyperclip>=1.9.0",
+    "cryptography>=43,<46",
+    # Windows-only: WinRT bindings used by WindowsToastNotifier to raise a real
+    # toast (and persist it to the Action Center) under SayIt's AppUserModelID.
+    # The legacy QSystemTrayIcon balloon is handed to the shell but is not
+    # reliably displayed on Windows 10/11 and does not persist to Action Center.
+    "winsdk>=1.0.0b10; sys_platform == 'win32'",
 ]
 
 [tool.briefcase.app.sayit.linux.appimage]
 manylinux = "manylinux_2_28"
+
+# ----------------------------------------------------------------------------
+# macOS packaging (Apple Silicon + Intel native builds; DMG distribution).
+# ----------------------------------------------------------------------------
+# Native per-architecture builds (NOT universal2): the build runs on a native
+# runner of the target arch, so Briefcase resolves the matching arch wheels for
+# sherpa-onnx / PySide6. A universal2 claim is only made if every native library
+# is verified universal (it is not asserted here). ``universal_build = false``
+# keeps the build honest to the host architecture.
+[tool.briefcase.app.sayit.macOS]
+universal_build = false
+icon = "icons/sayit"
+requires = [
+    "platformdirs>=4.5.1",
+    "pydantic>=2.12.5",
+    "pynput>=1.8.1",
+    "PySide6-Essentials>=6.6.0,<6.11",
+    "sounddevice>=0.5.3",
+    "numpy>=1.26.0,<2",
+    # macOS cp312 wheels for the validated pinned pair are published for
+    # arm64 and x86_64 (verified on PyPI). Do NOT upgrade without revalidation.
+    "sherpa-onnx==1.13.8",
+    "sherpa-onnx-core==1.13.8",
+    "litellm>=1.80.16,<2",
+    "pyperclip>=1.9.0",
+    "cryptography>=43,<46",
+]
+# Minimum supported macOS version (Briefcase default support floor).
+min_os_version = "12.0"
+
+# Info.plist additions. NSMicrophoneUsageDescription is REQUIRED for the OS
+# microphone prompt; without it the app is killed on first capture. The app
+# also monitors global keys and injects a paste keystroke, which require
+# Accessibility / Input Monitoring granted by the user in System Settings
+# (there is no Info.plist key for those; the app surfaces guidance at runtime).
+[tool.briefcase.app.sayit.macOS.info]
+NSMicrophoneUsageDescription = "SayIt records from your microphone only while you hold the push-to-talk hotkey, to transcribe your speech on-device. Audio is not sent anywhere for recognition."
+NSHighResolutionCapable = true
+
+# Hardened-runtime entitlements required for notarization + audio input.
+# JIT/unsigned-memory entitlements are needed by the Python/Qt runtime.
+[tool.briefcase.app.sayit.macOS.entitlement]
+"com.apple.security.device.audio-input" = true
+"com.apple.security.cs.allow-unsigned-executable-memory" = true
+"com.apple.security.cs.disable-library-validation" = true

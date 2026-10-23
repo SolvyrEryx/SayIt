@@ -31,6 +31,11 @@ FALLBACK_MODEL_ID = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
 WHISPER_CPU_THREAD_CHOICES = (4, 6, 8)
 DEFAULT_WHISPER_CPU_THREADS = 4
 
+# Supported dictation languages (initial Bharat scope). English preserves all
+# existing behaviour; Hindi/Kannada route to IndicConformer CTC models.
+SUPPORTED_LANGUAGES = ("en", "hi", "kn")
+DEFAULT_LANGUAGE = "en"
+
 
 def _get_default_enhancements() -> List[dict]:
     from ..transcript_processor.llm_processor import get_default_enhancements
@@ -114,6 +119,13 @@ class Settings(BaseModel):
     hotkey: HotkeyConfig = Field(default_factory=HotkeyConfig)
     model_id: str = DEFAULT_MODEL_ID
 
+    # Dictation language (Phase: Bharat). Decoupled from the concrete model
+    # selector: the user picks a language ("en", "hi", "kn") and the app routes
+    # to a compatible model. Persists across restarts. English is the default so
+    # existing installs behave exactly as before. An unknown/invalid value
+    # falls back to "en".
+    dictation_language: str = "en"
+
     # Whisper Small opt-in CPU thread count (Advanced / Performance). ONLY the
     # Whisper Small Higher-Accuracy path reads this; Parakeet (the production
     # default) is unaffected and always uses its existing thread configuration.
@@ -132,6 +144,15 @@ class Settings(BaseModel):
     # does NOT depend on this: the app keeps the current transcript in memory
     # and on the clipboard regardless of this setting.
     history_enabled: bool = False
+
+    # Persistent ASSISTANT CONVERSATION retention is a SEPARATE, explicit opt-in
+    # from transcript history above. OFF by default: the chat assistant keeps
+    # its conversation only in memory while the panel is open, and never writes
+    # conversation transcripts/task revisions to disk unless this is True.
+    # Enabling transcript history does NOT enable conversation storage (and vice
+    # versa) — each is its own consented decision. Executed-action status and
+    # any credentials are never persisted here.
+    conversation_history_enabled: bool = False
 
     # Local, deterministic post-ASR correction (Phase 6G). Both run entirely
     # on-device with no network. Conservative by design, so ON by default.
@@ -205,12 +226,44 @@ class Settings(BaseModel):
 
     window_geometry: Optional[Tuple[int, int, int, int]] = None
 
+    # v0.2.0 Notes + Voice Widget. All OFF by default so existing dictation
+    # behaviour (insert into the foreground application) is unchanged out of the
+    # box. Local-only; notes persist to notes.json in the data dir.
+    #   notes_panel_visible:    whether the docked Notes panel is shown.
+    #   voice_widget_enabled:   whether the persistent Voice Widget is shown.
+    #   dictate_to_note_enabled: when True AND the Notes panel is available,
+    #                           dictation output is routed into the active note
+    #                           instead of the foreground app. Explicit opt-in.
+    #   voice_widget_position:  persisted (x, y) of the Voice Widget.
+    notes_panel_visible: bool = False
+    voice_widget_enabled: bool = False
+    dictate_to_note_enabled: bool = False
+    voice_widget_position: Optional[Tuple[int, int]] = None
+    #   notes_dock_side: which screen edge the Notes panel docks to ("left" or
+    #                    "right"; default "right"). Persisted across restarts.
+    notes_dock_side: str = "right"
+
+    @field_validator("notes_dock_side")
+    @classmethod
+    def notes_dock_side_valid(cls, v):
+        # Safe-by-default: any unknown/invalid value falls back to "right".
+        return v if v in ("left", "right") else "right"
+
     @field_validator("model_id")
     @classmethod
     def model_id_not_empty(cls, v):
         if not isinstance(v, str) or not v.strip():
             raise ValueError("model_id must be a non-empty string")
         return v
+
+    @field_validator("dictation_language")
+    @classmethod
+    def dictation_language_supported(cls, v):
+        # Safe-by-default: any unknown/invalid language falls back to English so
+        # old or hand-edited settings never break dictation.
+        if isinstance(v, str) and v in SUPPORTED_LANGUAGES:
+            return v
+        return DEFAULT_LANGUAGE
 
     @field_validator("whisper_small_cpu_threads")
     @classmethod
@@ -282,6 +335,11 @@ class Settings(BaseModel):
                 # so an invalid persisted value always falls back to 4.
                 if settings.whisper_small_cpu_threads not in WHISPER_CPU_THREAD_CHOICES:
                     settings.whisper_small_cpu_threads = DEFAULT_WHISPER_CPU_THREADS
+
+                # Same safeguard for dictation_language (model_construct bypasses
+                # validators): an invalid persisted language falls back to en.
+                if settings.dictation_language not in SUPPORTED_LANGUAGES:
+                    settings.dictation_language = DEFAULT_LANGUAGE
 
                 if not settings.enhancements:
                     settings.enhancements = _get_default_enhancements()
