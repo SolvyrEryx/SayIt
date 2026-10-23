@@ -68,7 +68,7 @@ run **later**; items marked pending reflect what has not yet been validated.
 ## Platform
 - [ ] Windows: interactive validation on a physical display; packaged install.
 - [ ] Linux: validate (or explicitly scope out) X11 vs Wayland hotkey behavior and `xclip` clipboard dependency.
-- [ ] macOS: confirmed unsupported and documented as such.
+- [ ] macOS: now a supported build target (arm64 + x86_64 .app/DMG build in CI). Hands-on native acceptance pending — see "Platform acceptance checklist (v0.2.0)" below.
 
 ## Packaging
 - [ ] Installer builds (`scripts/build.py` + Inno Setup) succeed in CI.
@@ -177,20 +177,66 @@ The `release` job additionally refuses to publish if any DMG is present but a
 no marker at all. A Windows/Linux-only release (no DMG) is allowed and skips
 this macOS guard.
 
-### Native validation status (not yet run)
+### Native CI build/package status (v0.2.0)
 
-As of this document, the native macOS (`macos-14` arm64 + `macos-13` x86_64)
-and Linux (`ubuntu-latest` AppImage) build/package/validate jobs have **not**
-been executed on GitHub-hosted runners for v0.2.0. The workflow, gates, and
-local static checks (Python test suite, website `npm run check`, build-isolation
-and installer-AUMID regression tests) pass, but:
+The native macOS (`macos-14` arm64 + `macos-15-intel` x86_64) and Linux
+(`ubuntu-latest` AppImage) build/package jobs have **passed** on GitHub-hosted
+runners for commit `33a323c`, run
+[39946798291](https://github.com/VptrCipher/SayIt/actions/runs/39946798291)
+(all five jobs green). `macos-13` was retired by GitHub on 2025-12-04 and
+replaced with `macos-15-intel` (actions/runner-images#13045).
 
-- [ ] `build-macos` (arm64) — build, native-arch check, sign/notarize/staple/
-      Gatekeeper, upload — **not yet run on a macOS runner**.
-- [ ] `build-macos` (x86_64) — same — **not yet run on a macOS runner**.
-- [ ] `build-linux-x64` — AppImage build, smoke test, size/ELF/name validation,
-      checksum, upload — **not yet run on a Linux runner**.
+- [x] `build-macos` (arm64) — build, native-arch check, both DMG variants
+      (dynamic payload-sized `hdiutil` image), bundled-model integrity gate,
+      DMG mount + payload verification, upload — **passed on macos-14**.
+- [x] `build-macos` (x86_64) — same — **passed on macos-15-intel**.
+- [x] `build-linux-x64` — AppImage build, smoke test, size/ELF/name validation,
+      checksum, upload — **passed on ubuntu-latest**.
 
-Do not mark these as passed, and do not describe macOS/Linux as
-release-validated, until the corresponding GitHub Actions jobs have completed
-successfully.
+These are the **automated** build/package/verify jobs. Signing/notarization was
+**skipped** (no Apple credentials on a PR build; DMGs are `unsigned-dev`
+development artifacts). Hands-on native desktop acceptance (permissions,
+hotkeys, live transcription, insertion, notifications) is tracked separately in
+"Platform acceptance checklist (v0.2.0)" below and is **not** yet done. Do not
+describe macOS as release-validated until signing + notarization + hands-on
+acceptance are complete.
+
+---
+
+## Platform acceptance checklist (v0.2.0)
+
+Hands-on validation to run on real hardware with an installed build before a
+public release. **None of these have been performed yet; do not mark them
+without running on physical machines.** CI covers only automated build/package.
+
+### macOS (per architecture: arm64 + Intel)
+- [ ] Microphone permission: first capture prompts for the mic permission;
+      denial surfaces actionable guidance and the app never claims to be
+      listening while denied.
+- [ ] Accessibility / Input Monitoring permission: global hotkey + synthetic
+      paste require it; missing permission shows actionable guidance.
+- [ ] Global hotkey records on hold and transcribes on release; Esc cancels an
+      in-progress recording/transcription.
+- [ ] Live transcription produces usable text from a real mic with a real model.
+- [ ] Clipboard insertion (Cmd+V) inserts at the cursor in representative apps
+      (document which apps were tested).
+- [ ] Notification Center: reminder/completion notifications appear and behave
+      correctly (no stuck Recording/Processing state after errors).
+- [ ] Offline bundle: with no network, the bundled INT8 models load and
+      transcribe (no download required); the four expected models are present
+      in the installed `.app`.
+- [ ] Gatekeeper first-launch behavior matches the signing status of the build
+      being tested (unsigned dev build vs a notarized release build).
+
+### Linux (X11 and Wayland)
+- [ ] X11: global hotkey (pynput) records/transcribes; `xclip`/`xsel` clipboard
+      insertion works at the cursor.
+- [ ] Wayland: GlobalShortcuts portal hotkey works where supported;
+      `wl-clipboard` insertion works; where the compositor lacks
+      portal/synthetic-input, the transcript is left on the clipboard with a
+      clear "paste it yourself" message (no silent failure).
+- [ ] Notifications appear via the desktop notification service.
+- [ ] Offline bundle: bundled INT8 models load and transcribe with no network;
+      the four expected models are present in the AppImage.
+- [ ] Esc cancels an active recording/transcription; app never stuck after
+      errors.
