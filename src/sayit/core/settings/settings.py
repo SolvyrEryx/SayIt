@@ -145,6 +145,15 @@ class Settings(BaseModel):
     # and on the clipboard regardless of this setting.
     history_enabled: bool = False
 
+    # Persistent ASSISTANT CONVERSATION retention is a SEPARATE, explicit opt-in
+    # from transcript history above. OFF by default: the chat assistant keeps
+    # its conversation only in memory while the panel is open, and never writes
+    # conversation transcripts/task revisions to disk unless this is True.
+    # Enabling transcript history does NOT enable conversation storage (and vice
+    # versa) — each is its own consented decision. Executed-action status and
+    # any credentials are never persisted here.
+    conversation_history_enabled: bool = False
+
     # Local, deterministic post-ASR correction (Phase 6G). Both run entirely
     # on-device with no network. Conservative by design, so ON by default.
     technical_correction_enabled: bool = True
@@ -216,6 +225,29 @@ class Settings(BaseModel):
     custom_vocabulary: List[dict] = Field(default_factory=list)
 
     window_geometry: Optional[Tuple[int, int, int, int]] = None
+
+    # v0.2.0 Notes + Voice Widget. All OFF by default so existing dictation
+    # behaviour (insert into the foreground application) is unchanged out of the
+    # box. Local-only; notes persist to notes.json in the data dir.
+    #   notes_panel_visible:    whether the docked Notes panel is shown.
+    #   voice_widget_enabled:   whether the persistent Voice Widget is shown.
+    #   dictate_to_note_enabled: when True AND the Notes panel is available,
+    #                           dictation output is routed into the active note
+    #                           instead of the foreground app. Explicit opt-in.
+    #   voice_widget_position:  persisted (x, y) of the Voice Widget.
+    notes_panel_visible: bool = False
+    voice_widget_enabled: bool = False
+    dictate_to_note_enabled: bool = False
+    voice_widget_position: Optional[Tuple[int, int]] = None
+    #   notes_dock_side: which screen edge the Notes panel docks to ("left" or
+    #                    "right"; default "right"). Persisted across restarts.
+    notes_dock_side: str = "right"
+
+    @field_validator("notes_dock_side")
+    @classmethod
+    def notes_dock_side_valid(cls, v):
+        # Safe-by-default: any unknown/invalid value falls back to "right".
+        return v if v in ("left", "right") else "right"
 
     @field_validator("model_id")
     @classmethod

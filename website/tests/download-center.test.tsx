@@ -45,7 +45,7 @@ describe("DownloadCenter — no published manifest available", () => {
     });
 
     const cards = screen.getAllByRole("heading", { level: 3 });
-    expect(cards.map((card) => card.textContent)).toEqual(["Windows", "Linux"]);
+    expect(cards.map((card) => card.textContent)).toEqual(["Windows — Full Offline Installer", "Linux"]);
     expect(screen.getAllByRole("link", { name: "View GitHub releases" })).toHaveLength(2);
     for (const link of screen.getAllByRole("link", { name: "View GitHub releases" })) {
       expect(link).toHaveAttribute("href", site.releasesUrl);
@@ -61,7 +61,7 @@ describe("DownloadCenter — no published manifest available", () => {
       expect(container.querySelectorAll("h3").length).toBe(2);
     });
     const headings = [...container.querySelectorAll("h3")].map((h) => h.textContent);
-    expect(headings).toEqual(["Linux", "Windows"]);
+    expect(headings).toEqual(["Linux", "Windows — Full Offline Installer"]);
     expect(screen.getAllByText("For your system")).toHaveLength(1);
   });
 
@@ -104,7 +104,7 @@ describe("DownloadCenter — release available", () => {
       expect(screen.getByText("v0.1.2")).toBeInTheDocument();
     });
 
-    const windowsDownload = screen.getByRole("link", { name: "Download for Windows" });
+    const windowsDownload = screen.getByRole("link", { name: "Download for Windows — Full Offline Installer" });
     expect(windowsDownload).toHaveAttribute("href", VALID_MANIFEST.platforms.windows?.url);
     const linuxDownload = screen.getByRole("link", { name: "Download for Linux" });
     expect(linuxDownload).toHaveAttribute("href", VALID_MANIFEST.platforms.linux?.url);
@@ -139,11 +139,74 @@ describe("DownloadCenter — release available", () => {
       expect(screen.getByRole("link", { name: "Download for Linux" })).toBeInTheDocument();
     });
     expect(screen.getAllByText(/temporarily unavailable/i).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("link", { name: "Download for Windows" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Download for Windows — Full Offline Installer" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View GitHub releases" })).toHaveAttribute(
       "href",
       site.releasesUrl,
     );
+  });
+
+  it("renders BOTH Windows installers with an explicit offline/smaller distinction", async () => {
+    const dual: ReleaseManifest = {
+      version: "0.2.0",
+      release_date: "2026-10-17",
+      stable: true,
+      platforms: {
+        windows: {
+          architecture: "x64",
+          format: "exe",
+          url: "https://github.com/VptrCipher/SayIt/releases/download/v0.2.0/SayIt-Setup-x64-Offline.exe",
+          sha256: "b".repeat(64),
+          size_bytes: 1134229186,
+          variant: "offline",
+          bundles_models: true,
+          models: [
+            { id: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", role: "english_fast" },
+            { id: "sherpa-onnx-whisper-small", role: "english_higher_accuracy" },
+            { id: "indicconformer-hi-int8", role: "hindi" },
+            { id: "indicconformer-kn-int8", role: "kannada" },
+          ],
+        },
+        windows_ondemand: {
+          architecture: "x64",
+          format: "exe",
+          url: "https://github.com/VptrCipher/SayIt/releases/download/v0.2.0/SayIt-Setup-x64.exe",
+          sha256: "c".repeat(64),
+          size_bytes: 130720740,
+          variant: "ondemand",
+          bundles_models: false,
+        },
+        linux: VALID_MANIFEST.platforms.linux,
+      },
+    };
+    stubFetch(async () => ({ ok: true, json: async () => dual }));
+
+    render(<DownloadCenter platform="windows" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("v0.2.0")).toBeInTheDocument();
+    });
+
+    // Both Windows installers are offered, each pointing at its own artifact.
+    const offline = screen.getByRole("link", {
+      name: "Download for Windows — Full Offline Installer",
+    });
+    expect(offline).toHaveAttribute("href", dual.platforms.windows?.url);
+    const smaller = screen.getByRole("link", {
+      name: "Download for Windows — Smaller Installer",
+    });
+    expect(smaller).toHaveAttribute("href", dual.platforms.windows_ondemand?.url);
+
+    // Three cards total (offline, smaller, linux).
+    expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(3);
+
+    // The smaller installer must NOT advertise bundled models; the offline one does.
+    expect(screen.getByText(/downloads models on first use/i)).toBeInTheDocument();
+    expect(screen.getByText(/all models included/i)).toBeInTheDocument();
+
+    // Distinct sizes from the manifest (offline much larger than smaller).
+    expect(screen.getByText("Download size: 1082 MB")).toBeInTheDocument();
+    expect(screen.getByText("Download size: 125 MB")).toBeInTheDocument();
   });
 });
 
@@ -175,5 +238,49 @@ describe("DownloadCenter — failure states", () => {
         screen.getByText(/release information is temporarily unavailable/i),
       ).toBeInTheDocument();
     });
+  });
+});
+
+
+describe("DownloadCenter — macOS", () => {
+  it("renders macOS arm64 + Intel cards with arch-correct URLs and honest model claims", async () => {
+    const macManifest: ReleaseManifest = {
+      version: "0.2.0",
+      release_date: "2026-10-17",
+      stable: true,
+      platforms: {
+        macos_arm64: {
+          architecture: "arm64", format: "dmg",
+          url: "https://github.com/VptrCipher/SayIt/releases/download/v0.2.0/SayIt-macOS-arm64-Offline.dmg",
+          sha256: "a".repeat(64), size_bytes: 1200000000,
+          variant: "offline", bundles_models: true, min_os_version: "12.0",
+        },
+        macos_arm64_ondemand: {
+          architecture: "arm64", format: "dmg",
+          url: "https://github.com/VptrCipher/SayIt/releases/download/v0.2.0/SayIt-macOS-arm64-OnDemand.dmg",
+          sha256: "b".repeat(64), size_bytes: 150000000,
+          variant: "ondemand", bundles_models: false, min_os_version: "12.0",
+        },
+        macos_intel: {
+          architecture: "x86_64", format: "dmg",
+          url: "https://github.com/VptrCipher/SayIt/releases/download/v0.2.0/SayIt-macOS-x86_64-Offline.dmg",
+          sha256: "c".repeat(64), size_bytes: 1200000000,
+          variant: "offline", bundles_models: true, min_os_version: "12.0",
+        },
+        linux: VALID_MANIFEST.platforms.linux,
+      },
+    };
+    stubFetch(async () => ({ ok: true, json: async () => macManifest }));
+    render(<DownloadCenter platform="macos" />);
+    await waitFor(() => { expect(screen.getByText("v0.2.0")).toBeInTheDocument(); });
+
+    const armOffline = screen.getByRole("link", { name: "Download for macOS (Apple Silicon) — Full Offline" });
+    expect(armOffline).toHaveAttribute("href", macManifest.platforms.macos_arm64?.url);
+    const armSmaller = screen.getByRole("link", { name: "Download for macOS (Apple Silicon) — Smaller" });
+    expect(armSmaller).toHaveAttribute("href", macManifest.platforms.macos_arm64_ondemand?.url);
+    const intel = screen.getByRole("link", { name: "Download for macOS (Intel) — Full Offline" });
+    expect(intel).toHaveAttribute("href", macManifest.platforms.macos_intel?.url);
+
+    expect(screen.getAllByText(/downloads models on first use/i).length).toBeGreaterThan(0);
   });
 });

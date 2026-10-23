@@ -255,6 +255,49 @@ def stagger(widgets, base: int = 0, step: int = 20, cap: int = 80, **kwargs) -> 
         slide_up_in(w, delay=delay, **kwargs)
 
 
+# Default slide used by edge-docked panels (ms). ~200ms per spec.
+PANEL_SLIDE = 200
+
+
+def slide_in_from_edge(
+    widget: QWidget,
+    side: str = "right",
+    duration: int = PANEL_SLIDE,
+) -> None:
+    """Slide a top-level panel in from the given screen edge ("left"/"right").
+
+    The widget must already be positioned at its FINAL geometry (the caller
+    docks it first). This animates ``pos`` from just off the chosen edge to the
+    final position. Instant under reduced motion (the final position is applied
+    immediately). Lifecycle-safe: the animation is parented to the widget and
+    replaces any prior entrance animation via ``_retain``.
+    """
+    if widget is None:
+        return
+    final_pos = widget.pos()
+    if reduced_motion():
+        widget.show()
+        widget.move(final_pos)
+        return
+
+    try:
+        travel = max(widget.width(), 1)
+    except RuntimeError:
+        return
+    start_x = final_pos.x() - travel if side == "left" else final_pos.x() + travel
+
+    widget.move(start_x, final_pos.y())
+    widget.show()
+
+    anim = QPropertyAnimation(widget, b"pos", widget)
+    anim.setDuration(duration)
+    anim.setStartValue(QPoint(start_x, final_pos.y()))
+    anim.setEndValue(final_pos)
+    anim.setEasingCurve(EASE_OUT)
+    _retain(widget, anim)
+    anim.start()
+
+
 def animate_height(widget: QWidget, expand: bool, duration: int = NORMAL) -> None:
     """Expand/collapse a widget by animating its maximum height (accordion).
 

@@ -185,6 +185,20 @@ class TestPasteOptimization:
 
     def test_output_text_copies_and_issues_paste(self, monkeypatch):
         import sayit.core.output.text_output as to
+        import sayit.utils.capabilities as caps
+
+        # Unit test of controller logic: stub the v0.2.0 capability layer so the
+        # copy/paste path runs deterministically even on a headless Linux CI
+        # runner without xclip/xsel (the real clipboard_capability() would
+        # otherwise short-circuit before the mocked pyperclip.copy).
+        monkeypatch.setattr(
+            caps, "clipboard_capability",
+            lambda: caps.ClipboardCapability(True, "test"),
+        )
+        monkeypatch.setattr(
+            caps, "insertion_capability",
+            lambda: caps.InsertionCapability(True),
+        )
 
         copied = {}
         monkeypatch.setattr(to.pyperclip, "copy", lambda s: copied.setdefault("v", s))

@@ -6,19 +6,21 @@ on:
     tags:
       - "v*"          # Release build runs on a version tag; builds the TAGGED commit.
   pull_request:
-  release:
-    types: [created]  # Also build if a release is created from a tag.
+  # NOTE: no `release:` trigger. The tag-push run below itself CREATES the
+  # GitHub Release, so also triggering on `release: created` would launch a
+  # redundant second full build + release attempt. The release-triggered
+  # website deployment lives in website-deploy.yml (its own `release:
+  # [published]` trigger) and is unaffected by this.
   workflow_dispatch:  # Allow manual triggering
 
 env:
   APP_NAME: SayIt
-  # Raw tag ref name on a version tag (e.g. "v0.1.2"); "v0.1.2" otherwise.
-  # The leading "v" is stripped in the steps that need a bare version
-  # (Briefcase build + AppImage filename) so the Linux asset is named
-  # SayIt-0.1.2-Linux-x86_64.AppImage.
-  # For tag pushes, use that tag. For the one-time release commit on main,
-  # this is the new patch release being prepared.
-  APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v0.1.2' }}
+  # Version used for non-tag builds (branch push / manual dispatch / PR). On a
+  # version-tag push (refs/tags/v*), the tag name is used instead. The leading
+  # "v" is stripped where a bare version is needed (Briefcase build + AppImage
+  # filename) so the Linux asset is named SayIt-0.2.0-Linux-x86_64.AppImage.
+  # A non-tag build is NOT a public release (the release job is tag-gated).
+  APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v0.2.0' }}
 
 jobs:
   # ============================================================================
@@ -64,10 +66,13 @@ jobs:
       run: uv run pytest -m "not slow" -q
 
   # ============================================================================
-  # Windows Build - Creates .exe installer using Inno Setup
+  # Windows Build - Builds BOTH installer variants using Briefcase + Inno Setup
+  #   1. SayIt-Setup-x64-Offline.exe  (Full Offline Installer, 4 bundled models)
+  #   2. SayIt-Setup-x64.exe          (smaller on-demand installer, model-free)
+  # Model integrity + build-isolation gates run before Inno Setup packages each.
   # ============================================================================
   build-windows:
-    name: Build Windows Installer
+    name: Build Windows Installers
     needs: test
     runs-on: windows-latest
 
@@ -75,12 +80,12 @@ jobs:
     - uses: actions/checkout@v4
       with:
         ref: ${{ github.ref }}
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
-        
+
     - name: Install uv
       uses: astral-sh/setup-uv@v7
 
@@ -91,42 +96,112 @@ jobs:
         key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
         restore-keys: |
           uv-${{ runner.os }}-
-      
+
+    # sherpa-onnx-core is platform-pinned; the Windows wheel is resolved here.
     - name: Resolve and install dependencies
       run: |
         uv lock --upgrade-package sherpa-onnx-core
         uv sync --group dev
-        
-    - name: Build with Briefcase
-      run: |
-        uv run python scripts/build.py
-        
-    - name: Debug - Show build output
-      run: |
-        echo "=== Briefcase output ==="
-        Get-ChildItem -Recurse build/sayit/windows/app -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum
-        Get-ChildItem build/sayit/windows/app -Recurse -ErrorAction SilentlyContinue | Sort-Object Length -Descending | Select-Object -First 20
 
-    - name: Create Installer with Inno Setup
-      run: iscc /O+ /DMyAppVersion=${{ env.APP_VERSION }} installer.iss
-      shell: cmd
-
-    - name: Generate SHA-256 checksum
+    - name: Compute bare version (strip leading v)
+      id: ver
       shell: pwsh
       run: |
-        $exe = Get-ChildItem installer-output/*.exe | Select-Object -First 1
-        if (-not $exe) { Write-Error "No installer produced"; exit 1 }
-        $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
-        "$hash  $($exe.Name)" | Out-File "$($exe.FullName).sha256" -Encoding ascii
-        Write-Host "SHA-256: $hash"
-        Write-Host "Size: $([math]::Round($exe.Length/1MB,2)) MB"
+        $v = "${{ env.APP_VERSION }}" -replace '^v',''
+        "bare=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        Write-Host "Bare version: $v"
 
-    - name: Upload Windows Installer
+    # Fail fast if project version metadata is not coordinated with APP_VERSION.
+    - name: Validate version consistency
+      shell: pwsh
+      run: |
+        $bare = "${{ steps.ver.outputs.bare }}"
+        $py = (Select-String -Path pyproject.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+        $init = (Select-String -Path src/sayit/__init__.py -Pattern '__version__ = "([^"]+)"').Matches[0].Groups[1].Value
+        Write-Host "APP_VERSION(bare)=$bare pyproject=$py __init__=$init"
+        if ($py -ne $init) { Write-Error "pyproject ($py) != __init__ ($init)"; exit 1 }
+        # On a tagged release, the tag must match the project version exactly.
+        if ("${{ github.ref }}".StartsWith("refs/tags/v") -and $py -ne $bare) {
+          Write-Error "Tag version ($bare) != project version ($py)"; exit 1
+        }
+
+    # --- Model integrity gate (before any packaging) ------------------------
+    # Downloads the four bundled models and verifies every file against the
+    # reviewed per-file SHA-256 in models.json / bundled_models.json. Fails the
+    # job on any mismatch. Hashes are never regenerated.
+    - name: Fetch + verify bundled models
+      run: uv run python scripts/fetch_bundled_models.py
+
+    - name: Verify required license/attribution files present
+      shell: pwsh
+      run: |
+        foreach ($f in @("LICENSE","THIRD_PARTY_LICENSES.md","src/sayit/core/asr/models/bundled_models.json")) {
+          if (-not (Test-Path $f)) { Write-Error "Missing required file: $f"; exit 1 }
+        }
+        Write-Host "License/attribution files present."
+
+    # --- 1) Full Offline Installer ------------------------------------------
+    # build.py stages + verifies all 4 models into an isolated tree and runs the
+    # offline integrity gate before we invoke Inno Setup.
+    - name: Build Full Offline app (Briefcase + isolation gate)
+      env:
+        QT_QPA_PLATFORM: offscreen
+      run: uv run python scripts/build.py --variant offline
+
+    - name: Package Full Offline Installer (Inno Setup)
+      run: iscc /O+ /DMyAppVersion=${{ steps.ver.outputs.bare }} installer-offline.iss
+      shell: cmd
+
+    # --- 2) Smaller on-demand installer -------------------------------------
+    # build.py cleans staging + rebuilds a model-free tree and runs the ondemand
+    # isolation gate (fails if any bundled weight leaked) before Inno Setup.
+    - name: Build on-demand app (Briefcase + isolation gate)
+      env:
+        QT_QPA_PLATFORM: offscreen
+      run: uv run python scripts/build.py --variant ondemand
+
+    - name: Package on-demand Installer (Inno Setup)
+      run: iscc /O+ /DMyAppVersion=${{ steps.ver.outputs.bare }} installer.iss
+      shell: cmd
+
+    # --- Post-package validation + checksums from the REAL artifacts --------
+    - name: Validate artifacts, version metadata, and generate checksums
+      shell: pwsh
+      run: |
+        $bare = "${{ steps.ver.outputs.bare }}"
+        $offline = "installer-output/SayIt-Setup-x64-Offline.exe"
+        $smaller = "installer-output/SayIt-Setup-x64.exe"
+        foreach ($p in @($offline, $smaller)) {
+          if (-not (Test-Path $p)) { Write-Error "Expected installer missing: $p"; exit 1 }
+        }
+        # Embedded ProductVersion must match the bare version.
+        foreach ($p in @($offline, $smaller)) {
+          $pv = (Get-Item $p).VersionInfo.ProductVersion.Trim()
+          Write-Host "$p ProductVersion=$pv"
+          if ($pv -ne $bare) { Write-Error "$p ProductVersion ($pv) != $bare"; exit 1 }
+        }
+        # Offline must be substantially larger than the model-free smaller build.
+        $offMB = (Get-Item $offline).Length / 1MB
+        $smlMB = (Get-Item $smaller).Length / 1MB
+        Write-Host ("Offline={0:N2} MB  Smaller={1:N2} MB" -f $offMB, $smlMB)
+        if ($offMB -lt ($smlMB * 2)) {
+          Write-Error "Offline installer ($offMB MB) is not materially larger than smaller ($smlMB MB) - models may be missing."
+          exit 1
+        }
+        # Checksums computed from the actual final artifacts.
+        foreach ($p in @($offline, $smaller)) {
+          $h = (Get-FileHash $p -Algorithm SHA256).Hash
+          "$h  $([System.IO.Path]::GetFileName($p))" | Out-File "$p.sha256" -Encoding ascii
+          Write-Host "SHA-256 $([System.IO.Path]::GetFileName($p)) = $h"
+        }
+
+    - name: Upload Windows Installers
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.APP_NAME }}-Windows-Setup
         path: |
-          installer-output/*.exe
+          installer-output/SayIt-Setup-x64.exe
+          installer-output/SayIt-Setup-x64-Offline.exe
           installer-output/*.sha256
         if-no-files-found: error
 
@@ -183,7 +258,23 @@ jobs:
       
     - name: Install locked dependencies
       run: uv sync --group dev --frozen
-        
+
+    # Prove the Windows-only dependency is correctly skipped on Linux and is
+    # never imported by the notifier. uv --frozen above already honoured the
+    # 'sys_platform == win32' marker; this asserts it explicitly and checks the
+    # runtime import path stays clean.
+    - name: Verify winsdk is skipped and not imported on Linux
+      run: |
+        set -e
+        if uv pip show winsdk >/dev/null 2>&1; then
+          echo "::error::winsdk is installed on Linux — the 'sys_platform == win32' marker is not being honoured."
+          exit 1
+        fi
+        echo "winsdk correctly absent on Linux."
+        # The notifier module must import and build a notifier WITHOUT winsdk,
+        # and the Windows toast path must report unavailable (never import winsdk).
+        uv run python -c 'import sys; from sayit.core.reminders.notifier import build_notifier, WindowsToastNotifier, NullNotifier; assert sys.platform.startswith("linux"), sys.platform; wt=WindowsToastNotifier(); assert wt.available is False; r=wt.notify("t","m"); assert r.delivered is False and "Windows-only" in r.reason, r; assert isinstance(build_notifier(None), NullNotifier); assert "winsdk" not in sys.modules, "winsdk must never be imported on Linux"; print("Linux notifier path OK: winsdk never imported; NullNotifier fallback honest.")'
+
     - name: Build with Briefcase
       run: |
         uv run python scripts/build.py
@@ -233,6 +324,29 @@ jobs:
         cp "$APPIMAGE" "$OUT"
         echo "name=$OUT" >> "$GITHUB_OUTPUT"
 
+    - name: Validate AppImage artifact
+      run: |
+        set -e
+        OUT="${{ steps.appimage.outputs.name }}"
+        [ -f "$OUT" ] || { echo "::error::AppImage $OUT missing"; exit 1; }
+        # The AppImage name must encode the bare version and x86_64 arch.
+        VERSION="${{ env.APP_VERSION }}"; VERSION="${VERSION#v}"
+        case "$OUT" in
+          *"-${VERSION}-Linux-x86_64.AppImage") ;;
+          *) echo "::error::Unexpected AppImage name: $OUT (want *-${VERSION}-Linux-x86_64.AppImage)"; exit 1;;
+        esac
+        # A bundled Qt/PySide + sherpa-onnx AppImage is tens of MB at minimum;
+        # a tiny file means packaging silently produced an empty/broken image.
+        SIZE_MB=$(( $(stat -c%s "$OUT") / 1024 / 1024 ))
+        echo "AppImage size: ${SIZE_MB} MB"
+        if [ "$SIZE_MB" -lt 40 ]; then
+          echo "::error::AppImage is only ${SIZE_MB} MB — likely missing the bundled runtime."
+          exit 1
+        fi
+        # It must be an executable ELF AppImage.
+        file "$OUT" | grep -qiE "ELF|executable" || { echo "::error::$OUT is not an executable image"; exit 1; }
+        echo "AppImage validation passed."
+
     - name: Generate SHA-256 checksum
       run: |
         OUT="${{ steps.appimage.outputs.name }}"
@@ -250,12 +364,363 @@ jobs:
         if-no-files-found: error
 
   # ============================================================================
+  # macOS Builds - native Apple Silicon (arm64) + Intel (x86_64) .app + DMG.
+  # Each arch builds BOTH variants (Full Offline + smaller) with the same model
+  # integrity + build-isolation gates as Windows. Signing/notarization are
+  # credential-gated: skipped (UNSIGNED, reported) when secrets are absent.
+  # ============================================================================
+  build-macos:
+    name: Build macOS (${{ matrix.arch }})
+    needs: test
+    # v0.2.0 ships Windows + Linux only; macOS distribution is deferred until
+    # Apple signing + notarization + native acceptance are complete. Skip the
+    # macOS build ONLY for the exact refs/tags/v0.2.0 release so missing Apple
+    # secrets cannot block that Windows/Linux release. Every other context (PR,
+    # main, workflow_dispatch, and any OTHER version tag) still builds macOS and
+    # keeps its full signing/notarization gates — this exception is not
+    # generalized to future tags.
+    if: ${{ github.ref != 'refs/tags/v0.2.0' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14   # Apple Silicon (arm64)
+            arch: arm64
+          - runner: macos-15-intel   # Intel (x86_64); macos-13 retired Dec 2025
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ github.ref }}
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+
+    - name: Restore uv cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/uv
+        key: uv-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('uv.lock') }}
+        restore-keys: |
+          uv-${{ runner.os }}-${{ matrix.arch }}-
+
+    - name: Install locked dependencies
+      run: uv sync --group dev --frozen
+
+    - name: Compute bare version
+      id: ver
+      run: echo "bare=${APP_VERSION#v}" >> "$GITHUB_OUTPUT"
+      env:
+        APP_VERSION: ${{ env.APP_VERSION }}
+
+    - name: Validate version consistency
+      run: |
+        PY=$(grep -m1 '^version = ' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')
+        INIT=$(grep -m1 '__version__' src/sayit/__init__.py | sed -E 's/.*"([^"]+)".*/\1/')
+        echo "pyproject=$PY __init__=$INIT bare=${{ steps.ver.outputs.bare }}"
+        [ "$PY" = "$INIT" ] || { echo "version mismatch"; exit 1; }
+
+    # Model integrity gate (verifies every bundled file against the reviewed
+    # SHA-256 manifest; hashes are never regenerated).
+    - name: Fetch + verify bundled models
+      run: uv run python scripts/fetch_bundled_models.py
+
+    - name: Verify license/attribution files present
+      run: |
+        for f in LICENSE THIRD_PARTY_LICENSES.md src/sayit/core/asr/models/bundled_models.json; do
+          [ -f "$f" ] || { echo "Missing required file: $f"; exit 1; }
+        done
+
+    # --- Signing / notarization gate (fail FAST, before the long build) -----
+    # A PUBLIC release (version tag) MUST be signed + notarized. Real signing on
+    # a fresh runner needs BOTH the identity NAME *and* an importable Developer
+    # ID certificate+key (p12). The presence of an identity name alone is NOT
+    # enough. The pure decision logic lives in scripts/macos_signing.py so it is
+    # unit-tested; here we only pass in which secrets exist (booleans, never the
+    # values) and act on the result.
+    - name: Determine release/signing context
+      id: sign
+      env:
+        HAVE_CERT: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 != '' && secrets.MACOS_CERTIFICATE_PASSWORD != '' }}
+        HAVE_IDENTITY_NAME: ${{ secrets.MACOS_SIGN_IDENTITY != '' }}
+        HAVE_NOTARY: ${{ secrets.MACOS_NOTARY_API_KEY != '' && secrets.MACOS_NOTARY_API_KEY_ID != '' && secrets.MACOS_NOTARY_API_ISSUER != '' }}
+      run: |
+        set -euo pipefail
+        IS_TAG=false
+        case "${{ github.ref }}" in refs/tags/v*) IS_TAG=true;; esac
+        echo "is_tag=$IS_TAG" >> "$GITHUB_OUTPUT"
+        echo "have_cert=$HAVE_CERT" >> "$GITHUB_OUTPUT"
+        echo "have_notary=$HAVE_NOTARY" >> "$GITHUB_OUTPUT"
+        # Pure resolver -> can_sign / should_notarize / fail_fast / precheck.
+        # Exit code 2 means fail_fast (tagged release without a full path).
+        set +e
+        OUT="$(uv run python scripts/macos_signing.py resolve \
+          --have-cert "$HAVE_CERT" \
+          --have-identity "$HAVE_IDENTITY_NAME" \
+          --have-notary "$HAVE_NOTARY" \
+          --is-tag "$IS_TAG")"
+        RC=$?
+        set -e
+        echo "$OUT"
+        # Propagate the resolver's key=value lines to step outputs.
+        echo "$OUT" | grep -E '^(can_sign|should_notarize|status_precheck)=' >> "$GITHUB_OUTPUT"
+        if [ "$RC" = "2" ]; then
+          REASON="$(echo "$OUT" | sed -n 's/^fail_reason=//p')"
+          echo "::error::${REASON}"
+          exit 1
+        fi
+
+    # --- Import the Developer ID certificate into a TEMPORARY keychain -------
+    # Runs only when a real signing path is possible (can_sign). A fresh hosted
+    # runner has no signing key; without this, --identity would fail to find a
+    # certificate. Creates an isolated temp keychain (never touches the login or
+    # system keychain beyond adding ours to the search list), imports the p12,
+    # allows codesign non-interactive access, and VERIFIES the expected identity
+    # is actually present. Secrets are never echoed.
+    - name: Import Developer ID certificate (temporary keychain)
+      id: cert
+      if: ${{ steps.sign.outputs.can_sign == 'true' }}
+      env:
+        CERT_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+        CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      run: |
+        set -euo pipefail
+        umask 077
+        RUNID="${{ github.run_id }}-${{ matrix.arch }}-$$"
+        CERT_FILE="$(mktemp -t sayit_cert_XXXXXX).p12"
+        KEYCHAIN="$RUNNER_TEMP/sayit-signing-${RUNID}.keychain-db"
+        # A random keychain password (local to this job; not a secret value).
+        KC_PW="$(openssl rand -base64 24)"
+        # Export paths for later steps + cleanup (keychain path only; no secrets).
+        echo "keychain=$KEYCHAIN" >> "$GITHUB_OUTPUT"
+        echo "cert_file=$CERT_FILE" >> "$GITHUB_OUTPUT"
+
+        # Decode the base64 p12 to a restricted temp file.
+        printf '%s' "$CERT_P12_BASE64" | base64 --decode > "$CERT_FILE"
+
+        # Create + unlock an isolated temporary keychain and add it to the
+        # search list WITHOUT dropping the existing keychains.
+        security create-keychain -p "$KC_PW" "$KEYCHAIN"
+        security set-keychain-settings -lut 21600 "$KEYCHAIN"
+        security unlock-keychain -p "$KC_PW" "$KEYCHAIN"
+        EXISTING="$(security list-keychains -d user | sed 's/[\"[:space:]]//g')"
+        security list-keychains -d user -s "$KEYCHAIN" $EXISTING
+
+        # Import the Developer ID Application cert + private key; allow codesign.
+        security import "$CERT_FILE" -k "$KEYCHAIN" -P "$CERT_PASSWORD" \
+          -T /usr/bin/codesign -T /usr/bin/security -f pkcs12
+        # Non-interactive key access for codesign in this keychain.
+        security set-key-partition-list -S apple-tool:,apple: -s -k "$KC_PW" "$KEYCHAIN" >/dev/null
+
+        # VERIFY the expected identity is present + usable for code signing.
+        # Hashes are not secret; redact them anyway to keep the log minimal.
+        if ! security find-identity -v -p codesigning "$KEYCHAIN" | grep -F "$SIGN_IDENTITY" >/dev/null; then
+          echo "::error::Configured MACOS_SIGN_IDENTITY was not found among the" \
+               "codesigning identities imported from MACOS_CERTIFICATE_P12_BASE64." \
+               "Check that the p12 contains a Developer ID Application certificate" \
+               "+ private key and that MACOS_SIGN_IDENTITY matches its name/hash."
+          security find-identity -v -p codesigning "$KEYCHAIN" | sed -E 's/[0-9A-F]{40}/<hash>/g' || true
+          exit 1
+        fi
+        echo "Developer ID signing identity verified in temporary keychain."
+
+    # --- Full Offline .app + DMG (build.py runs staging + isolation gate) ---
+    - name: Build Full Offline (Briefcase + isolation gate + DMG)
+      env:
+        QT_QPA_PLATFORM: offscreen
+        # Identity is passed ONLY when a real certificate was imported
+        # (can_sign); otherwise empty -> build.py ad-hoc signs. This prevents
+        # asking codesign for an identity whose key is in no keychain.
+        SAYIT_MACOS_SIGN_IDENTITY: ${{ steps.sign.outputs.can_sign == 'true' && secrets.MACOS_SIGN_IDENTITY || '' }}
+      run: uv run python scripts/build.py --variant offline
+
+    - name: Build smaller on-demand (Briefcase + isolation gate + DMG)
+      env:
+        QT_QPA_PLATFORM: offscreen
+        SAYIT_MACOS_SIGN_IDENTITY: ${{ steps.sign.outputs.can_sign == 'true' && secrets.MACOS_SIGN_IDENTITY || '' }}
+      run: uv run python scripts/build.py --variant ondemand
+
+    # --- Verify native architecture of the packaged app + key native libs ---
+    - name: Verify native architecture
+      run: |
+        APP=$(find build -maxdepth 6 -name "SayIt.app" -type d | head -1)
+        echo "App bundle: $APP"
+        BIN="$APP/Contents/MacOS/SayIt"
+        if [ -f "$BIN" ]; then
+          file "$BIN"
+          lipo -info "$BIN" || true
+        fi
+        # Spot-check a native extension's arch.
+        DYLIB=$(find "$APP" -name "*.so" -o -name "*.dylib" 2>/dev/null | head -1)
+        [ -n "$DYLIB" ] && { file "$DYLIB"; lipo -info "$DYLIB" || true; }
+        # Fail if the binary arch does not contain the expected matrix arch.
+        if [ -f "$BIN" ]; then
+          file "$BIN" | grep -qi "${{ matrix.arch }}" || {
+            echo "ERROR: $BIN is not ${{ matrix.arch }}"; exit 1; }
+        fi
+
+    # --- Verify the Developer ID signature BEFORE notarization --------------
+    # Notarization requires a valid Developer ID signature with Hardened Runtime
+    # and a secure timestamp. Briefcase applies the hardened-runtime entitlements
+    # from pyproject when signing with a real --identity; verify that here so we
+    # never submit an ad-hoc/unsigned app to notarytool.
+    - name: Verify Developer ID signature + hardened runtime
+      id: codesign_verify
+      if: ${{ steps.sign.outputs.can_sign == 'true' }}
+      run: |
+        set -euo pipefail
+        APP=$(find build -maxdepth 6 -name "SayIt.app" -type d | head -1)
+        [ -n "$APP" ] || { echo "::error::no SayIt.app found to verify"; exit 1; }
+        # Strict signature validity.
+        codesign --verify --deep --strict --verbose=2 "$APP"
+        # Must be hardened-runtime (runtime flag) with a secure timestamp, and
+        # NOT ad-hoc (ad-hoc shows 'Signature=adhoc').
+        INFO="$(codesign -dvvv "$APP" 2>&1)"
+        echo "$INFO" | sed -E 's/[0-9A-F]{40}/<hash>/g'
+        echo "$INFO" | grep -q "flags=.*runtime" || {
+          echo "::error::app is not signed with Hardened Runtime"; exit 1; }
+        if echo "$INFO" | grep -qi "Signature=adhoc"; then
+          echo "::error::app is ad-hoc signed; cannot notarize"; exit 1
+        fi
+        echo "signed=true" >> "$GITHUB_OUTPUT"
+        echo "Developer ID signature + hardened runtime verified."
+
+    # --- Notarize + staple + Gatekeeper — only on a real signed build -------
+    # Gated on should_notarize (can_sign AND notary creds). Never notarizes an
+    # ad-hoc build. Records real outcomes for the signing-status marker.
+    - name: Notarize, staple, and verify (Gatekeeper)
+      id: notarize
+      if: ${{ steps.sign.outputs.should_notarize == 'true' }}
+      env:
+        NOTARY_KEY_P8: ${{ secrets.MACOS_NOTARY_API_KEY }}
+        NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+        NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_API_ISSUER }}
+      run: |
+        set -euo pipefail
+        # The API key secret holds the contents of the AuthKey_*.p8 file. Write
+        # it to a temp file with restrictive perms; never echo it.
+        umask 077
+        KEY_FILE="$(mktemp -t notary_key).p8"
+        printf '%s' "$NOTARY_KEY_P8" > "$KEY_FILE"
+        trap 'rm -f "$KEY_FILE"' EXIT
+
+        shopt -s nullglob
+        DMGS=(dist/*.dmg)
+        if [ ${#DMGS[@]} -eq 0 ]; then echo "::error::No DMG found in dist/ to notarize"; exit 1; fi
+
+        for DMG in "${DMGS[@]}"; do
+          echo "::group::Notarize $DMG"
+          # Submit and WAIT for Apple's verdict; non-zero exit on rejection.
+          xcrun notarytool submit "$DMG" \
+            --key "$KEY_FILE" \
+            --key-id "$NOTARY_KEY_ID" \
+            --issuer "$NOTARY_ISSUER" \
+            --wait
+          echo "notarized=true" >> "$GITHUB_OUTPUT"
+          # Staple the notarization ticket into the DMG for offline validation.
+          xcrun stapler staple "$DMG"
+          # Verify the staple and Gatekeeper acceptance; fail on rejection.
+          xcrun stapler validate "$DMG"
+          echo "stapled=true" >> "$GITHUB_OUTPUT"
+          spctl --assess --type open --context context:primary-signature -vv "$DMG"
+          echo "gatekeeper=true" >> "$GITHUB_OUTPUT"
+          echo "::endgroup::"
+        done
+        echo "All DMGs notarized, stapled, and Gatekeeper-assessed."
+
+    - name: Report UNSIGNED status (no full signed+notarized path)
+      if: ${{ steps.sign.outputs.should_notarize != 'true' }}
+      run: |
+        echo "::warning::macOS DMGs are UNSIGNED / NOT NOTARIZED (no complete" \
+             "Developer ID certificate + notary credential set). This is a" \
+             "development artifact and must NOT be published as a release. A" \
+             "tagged release build would have failed earlier."
+
+    # --- Clean up the temporary keychain + decoded cert (ALWAYS) ------------
+    # Removes only OUR temp keychain (restoring the prior search list) and the
+    # decoded p12. Never deletes login/system keychains. Runs even on failure.
+    - name: Clean up signing keychain
+      if: ${{ always() && steps.cert.outputs.keychain != '' }}
+      run: |
+        set +e
+        KEYCHAIN="${{ steps.cert.outputs.keychain }}"
+        CERT_FILE="${{ steps.cert.outputs.cert_file }}"
+        # Drop our keychain from the search list, keeping the rest.
+        REMAINING="$(security list-keychains -d user | sed 's/[\"[:space:]]//g' | grep -vF "$KEYCHAIN")"
+        [ -n "$REMAINING" ] && security list-keychains -d user -s $REMAINING
+        security delete-keychain "$KEYCHAIN" 2>/dev/null
+        [ -n "$CERT_FILE" ] && rm -f "$CERT_FILE"
+        echo "Temporary signing keychain + decoded certificate removed."
+
+    - name: Rename + checksum DMGs (+ signing-status marker)
+      env:
+        # Actual step outcomes (empty when a step was skipped/failed).
+        SIGNED: ${{ steps.codesign_verify.outputs.signed }}
+        NOTARIZED: ${{ steps.notarize.outputs.notarized }}
+        STAPLED: ${{ steps.notarize.outputs.stapled }}
+        GATEKEEPER: ${{ steps.notarize.outputs.gatekeeper }}
+      run: |
+        set -euo pipefail
+        mkdir -p macos-out
+        for DMG in dist/*.dmg; do
+          [ -f "$DMG" ] || continue
+          BASE=$(basename "$DMG")
+          cp "$DMG" "macos-out/$BASE"
+          ( cd macos-out && shasum -a 256 "$BASE" > "$BASE.sha256" && cat "$BASE.sha256" )
+        done
+        # Record the signing status alongside the artifacts so the release job
+        # (and humans) can tell a notarized DMG from a dev build at a glance.
+        # OUTCOME-BASED: signed-notarized only if signing+notarize+staple+
+        # Gatekeeper actually succeeded (computed by the unit-tested helper).
+        STATUS="$(uv run python scripts/macos_signing.py final \
+          --signed "${SIGNED:-false}" \
+          --notarized "${NOTARIZED:-false}" \
+          --stapled "${STAPLED:-false}" \
+          --gatekeeper "${GATEKEEPER:-false}" | sed -n 's/^signing_status=//p')"
+        echo "Computed signing status: $STATUS"
+        echo "$STATUS" > "macos-out/SIGNING_STATUS-${{ matrix.arch }}.txt"
+        ls -la macos-out || true
+
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.APP_NAME }}-macOS-${{ matrix.arch }}
+        path: |
+          macos-out/*.dmg
+          macos-out/*.sha256
+          macos-out/SIGNING_STATUS-*.txt
+        if-no-files-found: error
+
+  # ============================================================================
   # Release - Create GitHub Release when a version tag is pushed
   # ============================================================================
   release:
     name: Create Release
-    if: ${{ github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')) }}
-    needs: [build-windows, build-linux-x64]
+    # Proceed only when BOTH non-macOS builds succeeded AND the macOS build
+    # either succeeded OR was intentionally skipped for the v0.2.0 tag. An
+    # UNEXPECTED macOS failure (or a skip on any other tag) still blocks the
+    # release, so future signed-macOS releases keep their gate. The original
+    # trigger gating (release event / v* tag / main+[release]) is preserved.
+    if: >-
+      ${{ !cancelled()
+          && needs.build-windows.result == 'success'
+          && needs.build-linux-x64.result == 'success'
+          && (needs.build-macos.result == 'success'
+              || (needs.build-macos.result == 'skipped'
+                  && github.ref == 'refs/tags/v0.2.0'))
+          && (github.event_name == 'release'
+              || startsWith(github.ref, 'refs/tags/v')
+              || (github.ref == 'refs/heads/main'
+                  && contains(github.event.head_commit.message, '[release]'))) }}
+    needs: [build-windows, build-linux-x64, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -280,9 +745,34 @@ jobs:
       run: |
         mkdir release-files
         find artifacts -name "*.exe" -exec cp {} release-files/ \;
+        find artifacts -name "*.dmg" -exec cp {} release-files/ \;
         find artifacts -name "*.sha256" -exec cp {} release-files/ \;
         find artifacts -name "*.AppImage" -exec cp {} release-files/ \;
         ls -la release-files/
+
+    # Refuse to publish a macOS DMG that was not notarized. The macOS job writes
+    # a SIGNING_STATUS marker per arch; if any DMG exists while a marker says
+    # 'unsigned-dev', fail the release rather than ship an unsigned artifact.
+    - name: Guard — no unsigned macOS DMG in a release
+      run: |
+        set -e
+        DMG_COUNT=$(find release-files -name "*.dmg" | wc -l | tr -d ' ')
+        if [ "$DMG_COUNT" -gt 0 ]; then
+          if find artifacts -name "SIGNING_STATUS-*.txt" | grep -q .; then
+            if grep -rqx "unsigned-dev" artifacts/*/SIGNING_STATUS-*.txt 2>/dev/null; then
+              echo "::error::A macOS DMG is present but marked 'unsigned-dev'." \
+                   "Refusing to publish a non-notarized macOS artifact in a release."
+              exit 1
+            fi
+            echo "macOS DMG signing status verified: signed-notarized."
+          else
+            echo "::error::macOS DMG present but no SIGNING_STATUS marker found;" \
+                 "cannot confirm notarization. Refusing to publish."
+            exit 1
+          fi
+        else
+          echo "No macOS DMG in this release set (Windows/Linux only) — nothing to guard."
+        fi
 
     - name: Generate release manifest + checksums
       env:

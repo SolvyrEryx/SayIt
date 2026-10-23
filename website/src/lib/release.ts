@@ -10,7 +10,19 @@ import { BASE_PATH } from "./basePath";
  * every consumer must degrade to the honest fallback states below.
  */
 
-export type PlatformKey = "windows" | "linux";
+export type PlatformKey =
+  | "windows"
+  | "windows_ondemand"
+  | "linux"
+  | "macos_arm64"
+  | "macos_arm64_ondemand"
+  | "macos_intel"
+  | "macos_intel_ondemand";
+
+export type OfflineModel = {
+  id: string;
+  role: string;
+};
 
 export type PlatformAsset = {
   architecture: string;
@@ -18,6 +30,14 @@ export type PlatformAsset = {
   url: string;
   sha256?: string;
   size_bytes?: number;
+  /** "offline" | "ondemand" | "appimage" — which installer variant this is. */
+  variant?: string;
+  /** True only for the Full Offline Installer. The smaller installer is false. */
+  bundles_models?: boolean;
+  /** The model configurations bundled (offline installer only). */
+  models?: OfflineModel[];
+  /** Minimum supported OS version (macOS only, e.g. "12.0"). */
+  min_os_version?: string;
 };
 
 export type ReleaseManifest = {
@@ -36,7 +56,7 @@ export type ReleaseLoadResult =
 /** Site-root relative; BASE_PATH keeps it correct on GitHub Pages sub-paths. */
 export const MANIFEST_URL = `${BASE_PATH}/release-manifest.json`;
 
-const KNOWN_FORMATS = new Set(["exe", "AppImage"]);
+const KNOWN_FORMATS = new Set(["exe", "AppImage", "dmg"]);
 const SHA256_PATTERN = /^[a-fA-F0-9]{64}$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -74,7 +94,15 @@ export function validateReleaseManifest(data: unknown): ReleaseManifest | null {
   const rawPlatforms = record.platforms as Record<string, unknown>;
   const platforms: ReleaseManifest["platforms"] = {};
 
-  for (const key of ["windows", "linux"] as const) {
+  for (const key of [
+    "windows",
+    "windows_ondemand",
+    "linux",
+    "macos_arm64",
+    "macos_arm64_ondemand",
+    "macos_intel",
+    "macos_intel_ondemand",
+  ] as const) {
     const raw = rawPlatforms[key];
     if (raw === undefined) continue;
     if (typeof raw !== "object" || raw === null) return null;
@@ -90,6 +118,21 @@ export function validateReleaseManifest(data: unknown): ReleaseManifest | null {
     ) {
       return null;
     }
+    if (asset.variant !== undefined && !optionalString(asset.variant)) return null;
+    if (asset.bundles_models !== undefined && typeof asset.bundles_models !== "boolean") return null;
+    if (asset.min_os_version !== undefined && !optionalString(asset.min_os_version)) return null;
+
+    let models: OfflineModel[] | undefined;
+    if (asset.models !== undefined) {
+      if (!Array.isArray(asset.models)) return null;
+      models = [];
+      for (const m of asset.models) {
+        if (typeof m !== "object" || m === null) return null;
+        const mr = m as Record<string, unknown>;
+        if (!optionalString(mr.id) || !optionalString(mr.role)) return null;
+        models.push({ id: mr.id, role: mr.role });
+      }
+    }
 
     platforms[key] = {
       architecture: asset.architecture,
@@ -97,6 +140,10 @@ export function validateReleaseManifest(data: unknown): ReleaseManifest | null {
       url: asset.url,
       ...(asset.sha256 !== undefined ? { sha256: asset.sha256 } : {}),
       ...(asset.size_bytes !== undefined ? { size_bytes: asset.size_bytes } : {}),
+      ...(asset.variant !== undefined ? { variant: asset.variant } : {}),
+      ...(asset.bundles_models !== undefined ? { bundles_models: asset.bundles_models } : {}),
+      ...(asset.min_os_version !== undefined ? { min_os_version: asset.min_os_version } : {}),
+      ...(models !== undefined ? { models } : {}),
     };
   }
 

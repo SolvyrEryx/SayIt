@@ -59,6 +59,47 @@ class TestAudioRecorderDeviceEnumeration:
         assert devices == []
 
 
+class TestAudioRecorderDeviceResolution:
+    """Device-name resolution + safe fallback (verified during RC acceptance).
+
+    An unknown/stale persisted device NAME must resolve to None so sounddevice
+    uses the OS default input, rather than hard-failing. This is deliberate
+    safe-by-default behavior: a renamed/removed mic never silently disables
+    dictation. Selecting None (system default) also resolves to None.
+    """
+
+    def test_device_none_resolves_to_none(self):
+        rec = AudioRecorder(device=None)
+        assert rec._get_device_index() is None
+
+    @patch("src.sayit.core.audio.recorder.sd.query_devices")
+    def test_unknown_device_name_falls_back_to_default(self, mock_query):
+        mock_query.return_value = [
+            {
+                "name": "Real Mic",
+                "max_input_channels": 2,
+                "max_output_channels": 0,
+                "default_samplerate": 16000,
+            },
+        ]
+        rec = AudioRecorder(device="___no_such_device___")
+        # No match -> None -> OS default input is used by sd.InputStream.
+        assert rec._get_device_index() is None
+
+    @patch("src.sayit.core.audio.recorder.sd.query_devices")
+    def test_known_device_name_resolves_to_index(self, mock_query):
+        mock_query.return_value = [
+            {
+                "name": "Real Mic",
+                "max_input_channels": 2,
+                "max_output_channels": 0,
+                "default_samplerate": 16000,
+            },
+        ]
+        rec = AudioRecorder(device="Real Mic")
+        assert rec._get_device_index() == 0
+
+
 class TestAudioRecorderState:
     def test_initial_state_not_recording(self):
         recorder = AudioRecorder()

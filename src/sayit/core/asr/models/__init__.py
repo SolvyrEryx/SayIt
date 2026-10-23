@@ -1,5 +1,15 @@
 from .downloader import ModelDownloader
 from .loader import ModelLoaderThread
+from .model_integrity import (
+    BundledModel,
+    ModelIntegrityError,
+    bundled_model_ids,
+    bundled_models_root,
+    is_bundled,
+    load_bundled_manifest,
+    resolve_bundled_model_dir,
+    verify_staged_models,
+)
 from .registry import (
     AVAILABLE_MODELS,
     DownloadStatus,
@@ -12,7 +22,9 @@ from .registry import (
     get_model_by_id,
     get_model_download_status,
     get_models_for_language,
+    is_model_available,
     is_model_downloaded,
+    resolve_model_location,
 )
 
 __all__ = [
@@ -26,8 +38,19 @@ __all__ = [
     "get_models_for_language",
     "get_available_languages",
     "is_model_downloaded",
+    "is_model_available",
     "get_model_download_status",
     "get_all_models_with_status",
     "get_installed_asr_models",
+    "resolve_model_location",
     "delete_asr_model",
+    # Bundled offline-installer models
+    "BundledModel",
+    "ModelIntegrityError",
+    "bundled_model_ids",
+    "bundled_models_root",
+    "is_bundled",
+    "load_bundled_manifest",
+    "resolve_bundled_model_dir",
+    "verify_staged_models",
 ]

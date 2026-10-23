@@ -45,9 +45,38 @@ def build_ico(pngs: dict[int, bytes]) -> bytes:
         offset += len(data)
     return header + bytes(entries) + bytes(payload)
 
+
+# ICNS (macOS) OSType codes keyed by pixel dimension. Modern macOS reads the
+# PNG-encoded "ic##" types; we emit the common set so Finder/Dock/App use a
+# crisp icon at every scale. @2x retina variants reuse the larger PNGs.
+ICNS_TYPES = {
+    16: b"icp4",   # 16x16
+    32: b"icp5",   # 32x32
+    64: b"icp6",   # 64x64
+    128: b"ic07",  # 128x128
+    256: b"ic08",  # 256x256
+    512: b"ic09",  # 512x512
+}
+
+
+def build_icns(pngs: dict[int, bytes]) -> bytes:
+    """Build a PNG-backed .icns container from rendered PNGs.
+
+    ICNS format: 'icns' magic + big-endian total length, then a sequence of
+    (4-byte OSType + 4-byte big-endian element length incl. header + PNG data).
+    """
+    elements = bytearray()
+    for size, ostype in ICNS_TYPES.items():
+        data = pngs[size]
+        elements.extend(ostype)
+        elements.extend(struct.pack(">I", len(data) + 8))
+        elements.extend(data)
+    total = 8 + len(elements)
+    return b"icns" + struct.pack(">I", total) + bytes(elements)
+
 def check() -> None:
     expected = [OUTPUT / f"sayit-{size}.png" for size in SIZES]
-    expected += [OUTPUT / "sayit.png", OUTPUT / "sayit.ico"]
+    expected += [OUTPUT / "sayit.png", OUTPUT / "sayit.ico", OUTPUT / "sayit.icns"]
     missing = [str(path) for path in expected if not path.is_file()]
     if missing:
         raise RuntimeError("Missing generated icon assets:\n" + "\n".join(missing))
@@ -73,6 +102,12 @@ def check() -> None:
         dims.add(width)
     if dims != set(ICO_SIZES):
         raise RuntimeError(f"ICO sizes {sorted(dims)} != {list(ICO_SIZES)}")
+    icns = (OUTPUT / "sayit.icns").read_bytes()
+    if len(icns) < 8 or icns[:4] != b"icns":
+        raise RuntimeError("Invalid ICNS header")
+    icns_len = struct.unpack_from(">I", icns, 4)[0]
+    if icns_len != len(icns):
+        raise RuntimeError(f"ICNS length field {icns_len} != file size {len(icns)}")
 
 def generate() -> None:
     if not SOURCE.is_file():
@@ -91,6 +126,7 @@ def generate() -> None:
         (OUTPUT / f"sayit-{size}.png").write_bytes(pngs[size])
     (OUTPUT / "sayit.png").write_bytes(pngs[256])
     (OUTPUT / "sayit.ico").write_bytes(build_ico(pngs))
+    (OUTPUT / "sayit.icns").write_bytes(build_icns(pngs))
     check()
     if owned:
         app.quit()

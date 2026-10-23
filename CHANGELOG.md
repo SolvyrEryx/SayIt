@@ -1,5 +1,88 @@
 # Changelog
 
+## [0.2.0] - 2026-10-17
+
+### Release scope (v0.2.0 distribution)
+This v0.2.0 release ships **Windows and Linux builds only**:
+- Windows on-demand installer `SayIt-Setup-x64.exe` (models downloaded on first use).
+- Windows Full Offline installer `SayIt-Setup-x64-Offline.exe` (four bundled INT8 models).
+- Linux x86_64 AppImage (`SayIt-<version>-Linux-x86_64.AppImage`) with its SHA-256 checksum.
+
+**macOS distribution is deferred.** The macOS `.app`/DMG build works in CI, but a
+public macOS download is intentionally **not** part of this release pending
+Apple Developer ID signing, notarization, and native desktop acceptance. No
+macOS DMG is published in v0.2.0. The Linux AppImage passed the automated CI
+build + smoke test; hands-on Linux X11/Wayland desktop acceptance (hotkeys,
+clipboard insertion, notifications) has **not** been manually performed for this
+release and is tracked in `RELEASE_CHECKLIST.md`.
+
+### Cross-platform support (Windows · macOS · Linux)
+- Added a platform capability layer (`utils/capabilities.py`) centralizing
+  OS/arch detection, display-session (X11/Wayland) detection, hotkey-backend
+  selection, clipboard/insertion capability, tray availability, and
+  microphone/Accessibility permission diagnostics behind narrow interfaces.
+- Text insertion is now OS-aware: **Cmd+V on macOS**, Ctrl+V elsewhere. The
+  clipboard backend is detected (pbcopy / wl-clipboard / xclip / xsel) with an
+  actionable install hint when missing.
+- macOS packaging: native per-architecture `.app` + DMG Briefcase config
+  (Apple Silicon and Intel), `NSMicrophoneUsageDescription`, hardened-runtime
+  entitlements, an `.icns` icon, and credential-gated signing/notarization.
+  macOS cp312 wheels for the pinned `sherpa-onnx`/`sherpa-onnx-core` 1.13.8 pair
+  are published for arm64 and x86_64 (no engine change).
+- Linux Wayland: a GlobalShortcuts-portal hotkey backend with honest
+  availability detection; when unsupported, SayIt reports the limitation and
+  offers the Voice Widget Record button instead of pretending to listen. Under
+  Wayland, synthetic paste is restricted, so the transcript is left on the
+  clipboard with guidance to paste.
+- CI builds both installer variants for Windows, Linux (AppImage), and macOS
+  (arm64 + Intel), with model-integrity + build-isolation gates, native-arch
+  verification, and per-artifact checksums. macOS signing/notarization run only
+  when Apple credentials are present (otherwise the DMG is clearly reported as
+  UNSIGNED / not notarized).
+- The website release manifest + download selector now distinguish Windows
+  (offline + smaller), macOS arm64/Intel (offline + smaller, macOS 12+), and
+  Linux, exposing only artifacts that exist in a verified release.
+- **Pending validation (not yet claimed as fully supported):** the actual
+  macOS `.app`/DMG build (needs a macOS runner), Apple signing/notarization
+  (needs Developer credentials), and live per-compositor Linux X11/Wayland +
+  macOS interactive acceptance (needs real hardware/sessions).
+
+### Full Offline Installer
+- Added a Full Offline Installer variant that bundles four validated INT8 ASR
+  models inside the application: English Fast (Parakeet TDT 0.6B v2 INT8),
+  English Higher Accuracy (Whisper Small INT8), Hindi and Kannada
+  (IndicConformer INT8). Bundled models are loaded directly from the install
+  resources and are never duplicated into the per-user model cache.
+- Retained the smaller download-on-demand installer as the default alternative;
+  both share one application identity and differ only in whether model weights
+  ship inside the installer.
+- Added a version-controlled model integrity manifest (`bundled_models.json`)
+  with reviewed SHA-256 hashes and provenance/license for every bundled file,
+  plus a build-time integrity gate that fails the build on any missing file or
+  hash/size mismatch. Hashes are never regenerated silently.
+- Preserved model attributions: Parakeet (CC-BY-4.0, NVIDIA), Whisper Small
+  (MIT, OpenAI), IndicConformer weights (MIT, AI4Bharat) with Apache-2.0
+  sherpa-onnx ONNX-export packaging.
+
+### Notes panel + Voice Widget
+- Added a standalone, docked Notes panel with local autosave and restart
+  persistence (on-device JSON; notes never leave the machine).
+- Added a persistent, draggable Voice Widget with deterministic record/stop,
+  Escape-to-cancel, Notes access, and a Dictate-to-Note toggle.
+- Added explicit Dictate-to-Note routing. It is OFF by default: ordinary
+  dictation continues inserting into the foreground application unchanged. When
+  enabled, completed transcripts are appended to the active note instead, and a
+  routing failure falls back to foreground insertion so text is never lost.
+
+### Model availability + dictation
+- Surfaced bundled-vs-downloaded model availability in the UI and kept
+  language-compatible routing (Hindi/Kannada never fall back to an
+  English-only recognizer), now bundle-aware.
+- Benchmarked the on-device technical-correction stage with the existing timing
+  system across ordinary/technical/structured/difficult inputs: p95 ≈ 0.5–0.8
+  ms, far under the ~50 ms target, so no optimization was required and the
+  deterministic corrector was left unchanged.
+
 ## [0.1.3] - 2026-10-13
 
 ### Hindi and Kannada speech recognition
