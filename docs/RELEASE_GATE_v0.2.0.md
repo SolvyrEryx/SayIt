@@ -59,10 +59,23 @@ these; they cannot be run in this headless environment.
 ## 3. macOS signing + notarization — safe non-publishing test path
 
 ### 3.1 Owner action (one-time secret configuration)
-Configure four **repository secrets** (names only — never paste values into
-chat, logs, or commits). See `RELEASE_CHECKLIST.md` for how to obtain each:
-`MACOS_SIGN_IDENTITY`, `MACOS_NOTARY_API_KEY`, `MACOS_NOTARY_API_KEY_ID`,
-`MACOS_NOTARY_API_ISSUER`. Required **together** for notarization.
+Configure **six** repository secrets (names only — never paste values into
+chat, logs, or commits). See `RELEASE_CHECKLIST.md` for how to export/obtain
+each:
+- `MACOS_CERTIFICATE_P12_BASE64` — base64 of the Developer ID Application
+  certificate **+ private key** (`.p12`). Required for signing on a fresh
+  runner; an identity name alone cannot sign.
+- `MACOS_CERTIFICATE_PASSWORD` — password for that `.p12`.
+- `MACOS_SIGN_IDENTITY` — the identity **name** matching the certificate.
+- `MACOS_NOTARY_API_KEY` — contents of the App Store Connect **Team** API key
+  `AuthKey_<KEYID>.p8`.
+- `MACOS_NOTARY_API_KEY_ID` — the API Key ID.
+- `MACOS_NOTARY_API_ISSUER` — the API Issuer UUID.
+
+Signing requires the certificate pair **and** the identity name; notarization
+additionally requires all three notary secrets. The workflow imports the `.p12`
+into a temporary keychain and verifies the identity with
+`security find-identity -v -p codesigning` before building.
 
 ### 3.2 Why a manual dispatch is safe (verified against the workflow)
 The `release` job in `.github/workflows/build.yml` runs only if:
@@ -82,20 +95,25 @@ For a **`workflow_dispatch` of "Build Desktop App" on `feature/v0.2.0-work`**:
 workflow is a *separate* workflow; dispatching "Build Desktop App" does not
 start it — do **not** dispatch "Deploy Website".
 
-The signing step is gated on `have_notary == true`, **independent of tag
-status** (see the `Determine release/signing context` step). So a dispatch with
-the secrets present will **sign + notarize + staple + Gatekeeper-assess** both
-DMGs and mark them `signed-notarized`, while the public release job stays
-dormant. The fast-fail-on-missing-secrets branch only triggers when
-`is_tag=true`, so a dispatch never fails for absent secrets.
+The notarize step is gated on `should_notarize` (`can_sign` AND notary creds),
+**independent of tag status** (see the `Determine release/signing context`
+step). So a dispatch with the full credential set present will **sign +
+notarize + staple + Gatekeeper-assess** both DMGs and mark them
+`signed-notarized`, while the public release job stays dormant. The
+fast-fail branch only triggers when `is_tag=true`, so a dispatch never fails
+for absent secrets; it simply stays `unsigned-dev`.
 
 ### 3.3 Safe invocation
-1. Owner configures the four secrets (section 3.1).
+1. Owner configures the six secrets (section 3.1).
 2. Actions → **Build Desktop App** → **Run workflow** → branch
    `feature/v0.2.0-work`. (Do NOT run "Deploy Website". Do NOT push a `v*` tag.)
 3. Watch `build-macos` (arm64 + x86_64). Expect `Determine release/signing
-   context` to emit `have_sign=true`, `have_notary=true` (booleans only), the
-   `Notarize, staple, and verify (Gatekeeper)` step to RUN (not skip), and the
+   context` to emit `can_sign=true`, `should_notarize=true` (booleans only);
+   the `Import Developer ID certificate` step to verify the identity via
+   `security find-identity`; the `Notarize, staple, and verify (Gatekeeper)`
+   step to RUN (not skip); and the `SIGNING_STATUS-<arch>.txt` marker to read
+   `signed-notarized` (computed from actual step outcomes, not secret
+   presence).
    `SIGNING_STATUS-<arch>.txt` marker to read `signed-notarized`.
 
 ### 3.4 How to verify signing / notarization / stapling / Gatekeeper (both archs)

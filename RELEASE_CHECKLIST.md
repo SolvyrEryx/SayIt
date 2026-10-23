@@ -115,18 +115,31 @@ removed on exit).
 
 | Secret | Purpose | How it is used |
 |--------|---------|----------------|
-| `MACOS_SIGN_IDENTITY` | The *Developer ID Application* signing identity (e.g. the certificate common name or its SHA-1 hash) used to code-sign the `.app`/DMG. | Passed to the build as `SAYIT_MACOS_SIGN_IDENTITY`; `scripts/build.py` forwards it to `briefcase package macOS app --identity <id>`. When absent, the build is `--no-sign` (unsigned/ad-hoc, explicitly reported). |
-| `MACOS_NOTARY_API_KEY` | The **contents** of the App Store Connect API key file `AuthKey_<KEYID>.p8` (the full PEM text, not a path). | Written to a temporary `.p8` file (restrictive perms, deleted on exit) and passed to `xcrun notarytool submit --key`. |
+| `MACOS_CERTIFICATE_P12_BASE64` | **Base64-encoded** `.p12`/`.pfx` export of the **Developer ID Application** certificate **and its private key**. This is what actually lets a fresh runner sign — an identity name alone is not enough. | Decoded to a `mktemp` `.p12` (perms 600), imported into a **temporary** keychain by the `Import Developer ID certificate` step, then the keychain + file are deleted (even on failure). |
+| `MACOS_CERTIFICATE_PASSWORD` | The password protecting the `.p12` export above. | Passed to `security import -P`; never echoed. |
+| `MACOS_SIGN_IDENTITY` | The *Developer ID Application* identity **name** (certificate common name, e.g. `Developer ID Application: Your Name (TEAMID)`) matching the imported certificate. | `security find-identity -v -p codesigning` must find it in the temp keychain (the import step fails loudly otherwise); then passed to the build as `SAYIT_MACOS_SIGN_IDENTITY` only when a cert was imported (`can_sign`), and `scripts/build.py` forwards it to `briefcase package macOS app --identity <id>`. Without a certificate the build ad-hoc signs and is reported `unsigned-dev`. |
+| `MACOS_NOTARY_API_KEY` | The **contents** of the App Store Connect API key file `AuthKey_<KEYID>.p8` (the full PEM text, not a path). Must be a **Team** key with the Developer role, usable by `notarytool`. | Written to a temporary `.p8` file (restrictive perms, deleted on exit) and passed to `xcrun notarytool submit --key`. |
 | `MACOS_NOTARY_API_KEY_ID` | The App Store Connect API **Key ID** (the `<KEYID>` portion of the key filename). | Passed to `xcrun notarytool submit --key-id`. |
 | `MACOS_NOTARY_API_ISSUER` | The App Store Connect API **Issuer ID** (a UUID from the API Keys page). | Passed to `xcrun notarytool submit --issuer`. |
 
 Notes:
-- The three notary secrets are required **together**. The workflow treats
+- **Signing requires BOTH** `MACOS_CERTIFICATE_P12_BASE64` + `MACOS_CERTIFICATE_PASSWORD`
+  (the importable certificate) **and** `MACOS_SIGN_IDENTITY` (its name). A
+  configured identity name without the certificate does **not** enable signing;
+  the build stays `unsigned-dev`.
+- The three notary secrets are required **together**; the workflow treats
   notary credentials as present only when `MACOS_NOTARY_API_KEY`,
   `MACOS_NOTARY_API_KEY_ID`, and `MACOS_NOTARY_API_ISSUER` are all non-empty.
-- These secrets are needed **only for a public macOS release** (a `v*` tag).
-  Branch/PR/manual builds may run without them and produce clearly-labelled
-  `unsigned-dev` development DMGs that the release job refuses to publish.
+  Notarization is only attempted on a **real signed** build, never ad-hoc.
+- These secrets are needed for any **signed** macOS build. A **tagged `v*`
+  release fails fast** (before the long build) if the full certificate +
+  identity + notary set is incomplete. Branch/PR/manual builds may run without
+  them and produce clearly-labelled `unsigned-dev` development DMGs that the
+  release job refuses to publish.
+- The published `SIGNING_STATUS-<arch>.txt` marker is **outcome-based**: it
+  reads `signed-notarized` only after signing, notarization, stapling, and
+  Gatekeeper assessment all actually succeeded (computed by
+  `scripts/macos_signing.py`, unit-tested in `tests/test_macos_signing.py`).
 
 ### Required GitHub Actions permission (release job)
 
@@ -139,24 +152,48 @@ Notes:
 
 ### Configuring and validating the Apple credentials (without exposing values)
 
-1. In the Apple Developer account, create/export a **Developer ID Application**
-   certificate and note its identity string — this becomes
-   `MACOS_SIGN_IDENTITY`.
-2. In **App Store Connect → Users and Access → Integrations → App Store Connect
-   API**, create an API key with the **Developer** role. Download the
-   `AuthKey_<KEYID>.p8` **once** (it cannot be re-downloaded). Record the
-   **Key ID** and the page's **Issuer ID**.
-3. Add the four values as repository secrets (names above). For
+1. **Export the Developer ID Application certificate + private key** from
+   Keychain Access (or create it in the Apple Developer portal first). Select
+   **both** the certificate and its private key → right-click → **Export** →
+   format **Personal Information Exchange (.p12)** → set a strong password.
+   This password becomes `MACOS_CERTIFICATE_PASSWORD`.
+   - Note the identity string shown by:
+     ```bash
+     security find-identity -v -p codesigning
+     # e.g. "Developer ID Application: Your Name (TEAMID)"
+     ```
+     That exact string becomes `MACOS_SIGN_IDENTITY`.
+2. **Base64-encode the `.p12`** for safe storage as a secret (no newlines
+   leaking into the value):
+   ```bash
+   base64 -i DeveloperID.p12 | pbcopy   # copies the base64 to the clipboard
+   ```
+   Paste that into `MACOS_CERTIFICATE_P12_BASE64`. Do not commit the `.p12` or
+   its base64; delete the local files afterwards.
+3. In **App Store Connect → Users and Access → Integrations → App Store Connect
+   API**, create a **Team** API key with the **Developer** role (an individual
+   key cannot use `notarytool`). Download `AuthKey_<KEYID>.p8` **once** (it
+   cannot be re-downloaded). Record the **Key ID** and the page's **Issuer ID**.
+4. Add the **six** repository secrets (names in the table above). For
    `MACOS_NOTARY_API_KEY`, paste the entire contents of the `.p8` file.
-4. Validate **without printing values**:
-   - In the Actions UI, confirm the `Determine release/signing context` step
-     reports `have_sign=true` / `have_notary=true` on a tagged build (it only
-     emits booleans, never the values).
-   - A tagged build with any required secret missing **fails fast** at that
-     step, before the long build, with an explicit error — this is the
-     intended guard, not a bug.
-   - Keep the local `.p8` file out of the repository; it is already covered by
-     the ignore rules for keys/secrets. Rotate the key if it is ever exposed.
+5. Validate **without printing values**:
+   - In the Actions UI, the `Determine release/signing context` step prints
+     only booleans (`can_sign`, `should_notarize`, `have_cert`, `have_notary`,
+     `is_tag`) — never secret values.
+   - The `Import Developer ID certificate (temporary keychain)` step runs
+     `security find-identity -v -p codesigning` and **fails loudly** if
+     `MACOS_SIGN_IDENTITY` is not found among the imported identities (a wrong
+     name, a cert without its private key, or a bad password all fail here).
+   - A **tagged** build with any required secret missing **fails fast** at the
+     context step, before the long build — intended guard, not a bug.
+   - Keep the local `.p8`/`.p12` out of the repository (covered by the
+     keys/secrets ignore rules). Rotate any key/cert if ever exposed.
+
+To verify the produced artifacts yourself (see also
+`docs/RELEASE_GATE_v0.2.0.md`): `codesign --verify --deep --strict` +
+`codesign -dvvv` (expect `flags=...runtime`, not `Signature=adhoc`),
+`xcrun stapler validate <dmg>`, and
+`spctl --assess --type open --context context:primary-signature -vv <dmg>`.
 
 ### macOS release gate — sign → notarize → staple → Gatekeeper
 
