@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
+  <title id="title">SayIt — your voice, your words, your workflow</title>
+  <desc id="desc">A dark neon-orange animated 3D orb with orbiting rings and an audio waveform.</desc>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="46%" r="75%">
+      <stop offset="0" stop-color="#17120f"/>
+      <stop offset=".6" stop-color="#0b0a0b"/>
+      <stop offset="1" stop-color="#050507"/>
+    </radialGradient>
+    <radialGradient id="orb" cx="35%" cy="27%" r="75%">
+      <stop offset="0" stop-color="#ff9a48" stop-opacity=".42"/>
+      <stop offset=".32" stop-color="#a94717" stop-opacity=".3"/>
+      <stop offset=".7" stop-color="#201613" stop-opacity=".96"/>
+      <stop offset="1" stop-color="#07080c"/>
+    </radialGradient>
+    <radialGradient id="coreGlow">
+      <stop offset="0" stop-color="#ff7a1a" stop-opacity=".32"/>
+      <stop offset="1" stop-color="#ff6600" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffb16e" stop-opacity=".16"/>
+      <stop offset=".45" stop-color="#ff6600" stop-opacity=".9"/>
+      <stop offset="1" stop-color="#ffd0aa" stop-opacity=".22"/>
+    </linearGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#7a2e0a"/>
+      <stop offset=".5" stop-color="#ff7b19"/>
+      <stop offset="1" stop-color="#9b3c0b"/>
+    </linearGradient>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="soft" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+    <style>
+      .orbit-a{transform-origin:480px 181px;animation:spin 13s linear infinite}
+      .orbit-b{transform-origin:480px 181px;animation:spin-rev 17s linear infinite}
+      .orb-float{transform-origin:480px 181px;animation:float 4.5s ease-in-out infinite}
+      .pulse{transform-origin:480px 181px;animation:pulse 3.6s ease-in-out infinite}
+      .wavebar{transform-box:fill-box;transform-origin:center;animation:bar 1.05s ease-in-out infinite}
+      .wavebar:nth-child(2n){animation-duration:.83s}
+      .wavebar:nth-child(3n){animation-duration:1.2s}
+      .particle{animation:twinkle 3s ease-in-out infinite alternate}
+      @keyframes spin{to{transform:rotate(360deg)}}
+      @keyframes spin-rev{to{transform:rotate(-360deg)}}
+      @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+      @keyframes pulse{0%,100%{transform:scale(1);opacity:.75}50%{transform:scale(1.08);opacity:1}}
+      @keyframes bar{0%,100%{transform:scaleY(.34);opacity:.55}50%{transform:scaleY(1);opacity:1}}
+      @keyframes twinkle{from{opacity:.15}to{opacity:.85}}
+    </style>
+  </defs>
+  <rect width="960" height="420" fill="url(#bg)"/>
+  <g fill="#ff7824">
+    <circle class="particle" cx="84" cy="71" r="2" opacity=".4"/>
+    <circle class="particle" cx="188" cy="154" r="1.7" opacity=".4" style="animation-delay:-1s"/>
+    <circle class="particle" cx="295" cy="45" r="2.1" opacity=".3" style="animation-delay:-2s"/>
+    <circle class="particle" cx="690" cy="51" r="1.7" opacity=".4" style="animation-delay:-.8s"/>
+    <circle class="particle" cx="814" cy="120" r="2" opacity=".35" style="animation-delay:-1.4s"/>
+    <circle class="particle" cx="878" cy="276" r="1.6" opacity=".45" style="animation-delay:-2.2s"/>
+    <circle class="particle" cx="135" cy="300" r="1.8" opacity=".3" style="animation-delay:-.5s"/>
+    <circle class="particle" cx="772" cy="345" r="2" opacity=".35" style="animation-delay:-1.7s"/>
+    <circle class="particle" cx="355" cy="362" r="1.5" opacity=".35" style="animation-delay:-2.7s"/>
+    <circle class="particle" cx="608" cy="34" r="1.4" opacity=".35"/>
+  </g>
+  <text x="480" y="49" text-anchor="middle" fill="#fff7f1" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="32" font-weight="800" letter-spacing="2">SAYIT</text>
+  <text x="480" y="76" text-anchor="middle" fill="#c5b3a8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="13" letter-spacing="2">YOUR VOICE. YOUR WORDS. YOUR WORKFLOW.</text>
+  <circle cx="480" cy="181" r="126" fill="url(#coreGlow)" filter="url(#soft)"/>
+  <g class="orb-float">
+    <circle class="pulse" cx="480" cy="181" r="91" fill="url(#orb)" stroke="#ff7a24" stroke-opacity=".3"/>
+    <ellipse cx="450" cy="147" rx="17" ry="10" fill="#ffc18f" opacity=".12" filter="url(#soft)"/>
+    <path d="M418 154 C438 102 509 90 544 136" fill="none" stroke="#ffb47c" stroke-opacity=".13" stroke-width="1.2"/>
+    <path d="M414 204 C444 251 513 270 546 218" fill="none" stroke="#ff6600" stroke-opacity=".18" stroke-width="1.2"/>
+  </g>
+  <g class="orbit-a" fill="none">
+    <ellipse cx="480" cy="181" rx="142" ry="48" stroke="url(#ring)" stroke-width="1.25" transform="rotate(-29 480 181)"/>
+    <circle cx="604" cy="118" r="4" fill="#ffb078" stroke="none" filter="url(#glow)"/>
+  </g>
+  <g class="orbit-b" fill="none">
+    <ellipse cx="480" cy="181" rx="118" ry="66" stroke="#ff873d" stroke-opacity=".45" stroke-width="1" transform="rotate(61 480 181)"/>
+    <circle cx="382" cy="234" r="3.5" fill="#ff9b5b" stroke="none" filter="url(#glow)"/>
+  </g>
+  <circle cx="480" cy="181" r="4.5" fill="#ff8a3b" filter="url(#glow)"/>
+  <g transform="translate(0 0)" fill="url(#wave)" filter="url(#glow)">
+    <rect class="wavebar" x="208" y="337" width="7" height="13" rx="3.5"/>
+    <rect class="wavebar" x="224" y="332" width="7" height="23" rx="3.5" style="animation-delay:-.2s"/>
+    <rect class="wavebar" x="240" y="328" width="7" height="31" rx="3.5" style="animation-delay:-.45s"/>
+    <rect class="wavebar" x="256" y="325" width="7" height="37" rx="3.5" style="animation-delay:-.1s"/>
+    <rect class="wavebar" x="272" y="320" width="7" height="47" rx="3.5" style="animation-delay:-.7s"/>
+    <rect class="wavebar" x="288" y="316" width="7" height="55" rx="3.5" style="animation-delay:-.3s"/>
+    <rect class="wavebar" x="304" y="320" width="7" height="47" rx="3.5" style="animation-delay:-.55s"/>
+    <rect class="wavebar" x="320" y="312" width="7" height="63" rx="3.5" style="animation-delay:-.15s"/>
+    <rect class="wavebar" x="336" y="306" width="7" height="75" rx="3.5" style="animation-delay:-.8s"/>
+    <rect class="wavebar" x="352" y="314" width="7" height="59" rx="3.5" style="animation-delay:-.4s"/>
+    <rect class="wavebar" x="368" y="300" width="7" height="87" rx="3.5" style="animation-delay:-.65s"/>
+    <rect class="wavebar" x="384" y="307" width="7" height="73" rx="3.5" style="animation-delay:-.25s"/>
+    <rect class="wavebar" x="400" y="296" width="7" height="95" rx="3.5" style="animation-delay:-.5s"/>
+    <rect class="wavebar" x="416" y="304" width="7" height="79" rx="3.5" style="animation-delay:-.12s"/>
+    <rect class="wavebar" x="432" y="298" width="7" height="91" rx="3.5" style="animation-delay:-.7s"/>
+    <rect class="wavebar" x="448" y="292" width="7" height="103" rx="3.5" style="animation-delay:-.36s"/>
+    <rect class="wavebar" x="464" y="300" width="7" height="87" rx="3.5" style="animation-delay:-.58s"/>
+    <rect class="wavebar" x="480" y="291" width="7" height="105" rx="3.5" style="animation-delay:-.15s"/>
+    <rect class="wavebar" x="496" y="298" width="7" height="91" rx="3.5" style="animation-delay:-.76s"/>
+    <rect class="wavebar" x="512" y="304" width="7" height="79" rx="3.5" style="animation-delay:-.26s"/>
+    <rect class="wavebar" x="528" y="296" width="7" height="95" rx="3.5" style="animation-delay:-.63s"/>
+    <rect class="wavebar" x="544" y="307" width="7" height="73" rx="3.5" style="animation-delay:-.42s"/>
+    <rect class="wavebar" x="560" y="300" width="7" height="87" rx="3.5" style="animation-delay:-.1s"/>
+    <rect class="wavebar" x="576" y="314" width="7" height="59" rx="3.5" style="animation-delay:-.5s"/>
+    <rect class="wavebar" x="592" y="306" width="7" height="75" rx="3.5" style="animation-delay:-.2s"/>
+    <rect class="wavebar" x="608" y="316" width="7" height="55" rx="3.5" style="animation-delay:-.68s"/>
+    <rect class="wavebar" x="624" y="320" width="7" height="47" rx="3.5" style="animation-delay:-.28s"/>
+    <rect class="wavebar" x="640" y="325" width="7" height="37" rx="3.5" style="animation-delay:-.82s"/>
+    <rect class="wavebar" x="656" y="328" width="7" height="31" rx="3.5" style="animation-delay:-.34s"/>
+    <rect class="wavebar" x="672" y="332" width="7" height="23" rx="3.5" style="animation-delay:-.6s"/>
+    <rect class="wavebar" x="688" y="337" width="7" height="13" rx="3.5" style="animation-delay:-.18s"/>
+  </g>
+  <text x="480" y="408" text-anchor="middle" fill="#a99589" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="12" letter-spacing="2">LOCAL-FIRST DESKTOP DICTATION</text>
+</svg>
